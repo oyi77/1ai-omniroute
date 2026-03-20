@@ -2,43 +2,51 @@
 
 An advanced patch for omniroute to make it spectacular — a collection of modular patches and scripts that enhance OmniRoute with additional providers, model support, and seamless AI aggregation capabilities.
 
-## Overview
+## What is this?
 
-OmniRoute is a powerful AI router, but it needs some patches to work with certain providers and handle all AI modalities properly. This repository contains:
+1ai-omniroute is a collection of patches and scripts that enhance OmniRoute to work with all AI modalities (video, image, vision, audio, etc.) and support additional providers. These patches are designed to be:
 
-1. **Antigravity No-ProjectId Patch** — Fixes the "Missing Google projectId" error for Antigravity OAuth accounts
-2. **Custom Provider Catalog Injection** — Adds additional providers to the compiled OmniRoute UI
-3. **Update Automation** — Scripts to keep OmniRoute patched after updates
-4. **Systemd Configuration** — Service file with proper environment variables
+- **Modular**: Each patch is a self-contained `.cjs` file
+- **Survivable**: Patches are reapplied on every OmniRoute startup
+- **Idempotent**: Safe to run multiple times without side effects
+- **Production-ready**: Includes systemd service configuration
 
-## What's Included
+## What's being added?
 
-### Modular Patches (loaded on startup)
+### Modular Patches
 
-| Patch | File | Description |
-|-------|------|-------------|
-| **Antigravity No-ProjectId** | `patches/antigravity-no-projectid.cjs` | Removes the need for stored projectId in Antigravity OAuth accounts, auto-fetches via loadCodeAssist |
+| Patch | Description |
+|-------|-------------|
+| **antigravity-no-projectid.cjs** | Fixes "Missing Google projectId" error for Antigravity OAuth accounts |
+| **endpoint-router.cjs** | Adds common AI aggregator endpoint aliases (e.g., `/v1/dalle`, `/v1/sora`, `/v1/vision`) |
 
-### Scripts
+### Custom Providers
 
-| Script | File | Description |
-|--------|------|-------------|
-| **Provider Catalog Patcher** | `scripts/patch-providers.sh` | Injects custom providers into compiled .next/*.js files |
-| **Update Manager** | `scripts/omniroute-update.sh` | Automated update + patch + restart workflow |
-| **Systemd Service** | `scripts/omniroute.service` | Service file with ANTIGRAVITY_OAUTH_CLIENT_SECRET configured |
+| Provider | Description |
+|----------|-------------|
+| **BytePlus (Seedance)** | BytePlus Ark platform for video generation |
+| **LaoZhang AI** | OpenAI-compatible Sora proxy |
+| **EvoLink** | Async webhook-based video generation |
+| **Hypereal AI** | Kling-3.0-based video generation |
+| **Kie.ai** | Video generation platform |
 
-## Quick Start
+### Scripts & Configuration
 
-### 1. Clone the Repository
+| Script | Description |
+|--------|-------------|
+| **patch-providers.sh** | Injects custom providers into compiled OmniRoute bundles |
+| **omniroute-update.sh** | Automated update workflow with patch reapplication |
+| **omniroute.service** | Systemd service with Antigravity OAuth secret |
+
+## How to use this?
+
+### Installation
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/1ai-omniroute.git
+# Clone the repository
+git clone https://github.com/oyi77/1ai-omniroute.git
 cd 1ai-omniroute
-```
 
-### 2. Install Patches
-
-```bash
 # Copy patches to OmniRoute patches directory
 mkdir -p ~/.omniroute/patches
 cp patches/*.cjs ~/.omniroute/patches/
@@ -47,107 +55,51 @@ cp patches/*.cjs ~/.omniroute/patches/
 cp scripts/*.sh ~/.omniroute/
 chmod +x ~/.omniroute/*.sh
 
-# Install systemd service
+# Install systemd service (optional)
 sudo cp scripts/omniroute.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl restart omniroute
 ```
 
-### 3. Verify Installation
+### Verification
 
 ```bash
 # Check patches are loaded
 omniroute --help
 # Should show: "🩹 Loaded X openclaw patch(es)"
 
-# Check service status
+# Check service status (if using systemd)
 sudo systemctl status omniroute
 ```
 
-## Patches Explained
-
-### 1. Antigravity No-ProjectId (`patches/antigravity-no-projectid.cjs`)
-
-**Problem**: When using Antigravity OAuth accounts, OmniRoute throws "Missing Google projectId" error.
-
-**Solution**: This patch intercepts the bundled AntigravityExecutor code and removes the throw error. Instead, it auto-fetches the projectId via Google's loadCodeAssist API when missing.
-
-**How it works**:
-- Loaded via `node --require` on every OmniRoute startup
-- Finds the bundled chunk file in `.next/`
-- Applies string replacement on the minified code
-- Survives OmniRoute updates (re-patched on each startup)
-
-### 2. Provider Catalog Patcher (`scripts/patch-providers.sh`)
-
-**Problem**: OmniRoute's compiled JavaScript bundles contain a hardcoded provider catalog. Custom providers don't appear in the UI dropdown.
-
-**Solution**: Python script that injects custom provider entries into the compiled `.next/*.js` files.
-
-**Usage**:
-```bash
-./patch-providers.sh          # Apply patches
-./patch-providers.sh --check  # Dry run
-./patch-providers.sh --status # Check status
-```
-
-**Custom Providers Included**:
-- BytePlus (Seedance video generation)
-- LaoZhang AI (OpenAI-compatible Sora proxy)
-- EvoLink (async webhook video generation)
-- Hypereal AI (Kling-3.0-based video)
-- Kie.ai (video generation)
-
-### 3. Update Manager (`scripts/omniroute-update.sh`)
-
-**Problem**: After `npm install -g omniroute`, patches are lost.
-
-**Solution**: Automated script that:
-1. Updates OmniRoute to latest version
-2. Re-applies provider catalog patch
-3. Verifies patches are loaded
-4. Restarts systemd service
-
-**Usage**:
-```bash
-./omniroute-update.sh           # Full update
-./omniroute-update.sh --dry-run # Show what would happen
-./omniroute-update.sh --patch-only # Skip update, only patch
-```
-
-### 4. Systemd Service (`scripts/omniroute.service`)
-
-Includes the `ANTIGRAVITY_OAUTH_CLIENT_SECRET` environment variable required for Antigravity OAuth flow.
-
 ## Supported AI Modalities
 
-With these patches, OmniRoute can handle all standard AI aggregator scenarios:
+| Modality | Endpoint | Aliases |
+|----------|----------|---------|
+| **Chat/Completions** | `/v1/chat/completions` | - |
+| **Image Generation** | `/v1/images/generations` | `/v1/dalle`, `/v1/stable-diffusion`, `/v1/midjourney` |
+| **Video Generation** | `/v1/videos/generations` | `/v1/sora`, `/v1/seedance`, `/v1/kling`, `/v1/runway`, `/v1/pika` |
+| **Vision** | `/v1/chat/completions` (with images) | `/v1/vision`, `/v1/analyze`, `/v1/describe`, `/v1/ocr` |
+| **Audio Transcription** | `/v1/audio/transcriptions` | `/v1/transcribe`, `/v1/stt`, `/v1/whisper` |
+| **Text-to-Speech** | `/v1/audio/speech` | `/v1/speech`, `/v1/tts` |
+| **Embeddings** | `/v1/embeddings` | `/v1/embed`, `/v1/vectorize` |
+| **Reranking** | `/v1/rerank` | `/v1/rank`, `/v1/reranker` |
+| **Moderations** | `/v1/moderations` | `/v1/moderate`, `/v1/content-filter` |
+| **Music Generation** | `/v1/music/generations` | `/v1/music`, `/v1/audiogen` |
 
-| Modality | Endpoint | Status |
-|----------|----------|--------|
-| **Chat/Completions** | `/v1/chat/completions` | ✅ Native |
-| **Image Generation** | `/v1/images/generations` | ✅ Native |
-| **Video Generation** | `/v1/videos/generations` | ✅ Native + Custom Providers |
-| **Audio Transcription** | `/v1/audio/transcriptions` | ✅ Native |
-| **Text-to-Speech** | `/v1/audio/speech` | ✅ Native |
-| **Embeddings** | `/v1/embeddings` | ✅ Native |
-| **Reranking** | `/v1/rerank` | ✅ Native |
-| **Moderations** | `/v1/moderations` | ✅ Native |
-| **Music Generation** | `/v1/music/generations` | ✅ Native |
+## Patches Explained
 
-## Architecture
+### 1. Antigravity No-ProjectId Patch
 
-```
-~/.omniroute/
-├── patches/                    # Modular patches (loaded on startup)
-│   └── antigravity-no-projectid.cjs
-├── patch-providers.sh          # Provider catalog injector
-├── omniroute-update.sh         # Update automation
-└── storage.sqlite              # Routing database (survives updates)
+**Problem**: Antigravity OAuth accounts require a stored projectId, which OmniRoute doesn't have.
 
-/etc/systemd/system/
-└── omniroute.service           # Systemd service with env vars
-```
+**Solution**: Intercepts the bundled code and auto-fetches projectId via Google's loadCodeAssist API.
+
+### 2. Endpoint Router Patch
+
+**Problem**: Users expect common AI aggregator aliases to work (e.g., `/v1/dalle`).
+
+**Solution**: Intercepts HTTP requests and redirects aliases to canonical endpoints.
 
 ## How It Works
 
@@ -165,7 +117,7 @@ With these patches, OmniRoute can handle all standard AI aggregator scenarios:
 # Manual update
 ~/.omniroute/omniroute-update.sh
 
-# Cron (weekly, Sunday 00:00)
+# Or with cron (weekly, Sunday 00:00)
 0 0 * * 0 /home/openclaw/.omniroute/omniroute-update.sh >> /home/openclaw/.omniroute/update.log 2>&1
 ```
 
@@ -208,24 +160,73 @@ sudo systemctl cat omniroute
 sudo systemctl restart omniroute
 ```
 
-## Contributing
+## Documentation
+
+- **[PATCHES.md](docs/PATCHES.md)**: Detailed documentation for each patch
+- **[CHANGELOG.md](docs/CHANGELOG.md)**: Project history and changes
+- **[CONTRIBUTING.md](docs/CONTRIBUTING.md)**: How to contribute
+
+## How to contribute?
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/new-patch`
 3. Add your patch to `patches/` directory
-4. Update this README with documentation
+4. Update documentation:
+   - Update this README
+   - Update [PATCHES.md](docs/PATCHES.md)
+   - Update [CHANGELOG.md](docs/CHANGELOG.md)
 5. Submit a pull request
+
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed guidelines.
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Acknowledgments
-
-- OmniRoute team for the amazing AI router
-- OpenClaw community for patch development and testing
-
 ---
 
 **Status**: Actively maintained. All patches tested with OmniRoute v2.7.8+.
 
+## Security
+
+### Important: Never Commit Secrets
+
+This repository is public. **NEVER** commit real secrets, API keys, or OAuth credentials to the repository.
+
+### Setting Up Secrets
+
+1. **Copy the example file**:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Edit the .env file** with your actual secrets:
+   ```bash
+   # Get Antigravity OAuth secret from Google Cloud Console
+   # APIs & Services → Credentials → OAuth 2.0 Client IDs
+   ANTIGRAVITY_OAUTH_CLIENT_SECRET=your-actual-secret-here
+   ```
+
+3. **For systemd service**, edit the service file:
+   ```bash
+   sudo nano /etc/systemd/system/omniroute.service
+   # Replace YOUR_ANTIGRAVITY_OAUTH_CLIENT_SECRET_HERE with your actual secret
+   sudo systemctl daemon-reload
+   sudo systemctl restart omniroute
+   ```
+
+### Security Best Practices
+
+- Store secrets in `.env` files (gitignored)
+- Use environment variables for production secrets
+- Rotate API keys regularly
+- Use least-privilege access for service accounts
+- Monitor API usage for anomalies
+
+### Reporting Security Issues
+
+If you discover a security vulnerability, please report it responsibly to the maintainers.
+
+---
+
+**Status**: Actively maintained. All patches tested with OmniRoute v2.7.8+.

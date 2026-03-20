@@ -98,3 +98,16 @@ Thumbs.db
 *.sqlite
 *.db
 update.log
+
+# Secrets and environment files
+*.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.secret
+*.credentials
+
+# Keep real service files out of repo (use templates instead)
+omniroute.service
+!scripts/omniroute.service

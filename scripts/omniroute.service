@@ -13,7 +13,9 @@ StandardOutput=journal
 StandardError=journal
 Environment=HOME=/home/openclaw
 Environment=PATH=/home/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
-Environment=ANTIGRAVITY_OAUTH_CLIENT_SECRET=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
+# IMPORTANT: Replace YOUR_ANTIGRAVITY_OAUTH_CLIENT_SECRET_HERE with your actual secret
+# Get it from: Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client IDs
+Environment=ANTIGRAVITY_OAUTH_CLIENT_SECRET=YOUR_ANTIGRAVITY_OAUTH_CLIENT_SECRET_HERE
 
 [Install]
 WantedBy=multi-user.target

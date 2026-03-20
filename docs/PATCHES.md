@@ -322,7 +322,7 @@ Restart=always
 RestartSec=5
 Environment=HOME=/home/openclaw
 Environment=PATH=/home/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
-Environment=ANTIGRAVITY_OAUTH_CLIENT_SECRET=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
+Environment=ANTIGRAVITY_OAUTH_CLIENT_SECRET=YOUR_ANTIGRAVITY_OAUTH_CLIENT_SECRET_HERE
 ```
 
 ### Installation

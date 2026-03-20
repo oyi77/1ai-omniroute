@@ -51,10 +51,8 @@ if [[ "$PATCH_ONLY" == false ]]; then
     LATEST="$(npm show omniroute version 2>/dev/null || echo 'unknown')"
     log "DRY RUN: would run 'npm install -g omniroute' (latest: $LATEST)"
   else
-    # Pin to minimum version — never downgrade below the last known-good version
     MIN_VERSION="2.7.8"
     LATEST="$(npm show omniroute version 2>/dev/null || echo "$MIN_VERSION")"
-    # Compare versions: only upgrade if latest >= min version
     TARGET=$(python3 -c "
 from packaging.version import Version
 try:
@@ -75,41 +73,51 @@ except: print('$MIN_VERSION')
 fi
 
 # ── 2b. Verify patch system is active ───────────────────────────────────────
-# OpenClaw patches live in ~/.omniroute/patches/ and are auto-loaded by
-# bin/omniroute.mjs on every startup. No manual patching needed here.
 PATCH_DIR="$SCRIPT_DIR/patches"
-if [[ -d "$PATCH_DIR" ]]; then
-  PATCH_COUNT=$(find "$PATCH_DIR" -name "*.cjs" -o -name "*.js" 2>/dev/null | wc -l)
-  log "OpenClaw modular patches found: $PATCH_COUNT (auto-loaded on startup)"
+
+if [[ "$DRY_RUN" == false ]]; then
+  if [[ -d "$PATCH_DIR" ]]; then
+    PATCH_COUNT=$(find "$PATCH_DIR" -name "*.cjs" | wc -l)
+    log "Found $PATCH_COUNT modular patch(es) in $PATCH_DIR"
+  else
+    log "WARNING: No patches directory found at $PATCH_DIR"
+  fi
 fi
 
-# ── 3. Apply catalog patch ────────────────────────────────────────────────────
+# ── 3. Re-apply provider catalog patch ──────────────────────────────────────
 if [[ "$DRY_RUN" == true ]]; then
-  log "DRY RUN: would run patch-providers.sh --check"
-  python3 "$PATCH_SCRIPT" --check
+  log "DRY RUN: would run '$PATCH_SCRIPT --check'"
 else
-  log "Applying provider catalog patch..."
+  log "Re-applying provider catalog patch..."
   if python3 "$PATCH_SCRIPT"; then
-    log "Patch applied successfully"
+    log "Provider catalog patch applied successfully"
   else
-    die "Patch failed — check $PATCH_SCRIPT for errors"
+    die "Provider catalog patch failed"
   fi
 fi
 
 # ── 3b. Ensure Antigravity client_secret in systemd service ──────────────────
-# Source: https://github.com/router-for-me/CLIProxyAPI/blob/main/internal/auth/antigravity/constants.go
-ANTIGRAVITY_SECRET="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"
-SVCFILE="/etc/systemd/system/omniroute.service"
-if [[ "$DRY_RUN" == true ]]; then
-  log "DRY RUN: would ensure ANTIGRAVITY_OAUTH_CLIENT_SECRET in $SVCFILE"
-else
-  if grep -q "ANTIGRAVITY_OAUTH_CLIENT_SECRET" "$SVCFILE" 2>/dev/null; then
-    log "ANTIGRAVITY_OAUTH_CLIENT_SECRET already in service file — skipping"
-  else
-    log "Injecting ANTIGRAVITY_OAUTH_CLIENT_SECRET into $SVCFILE..."
-    sudo sed -i "/Environment=PATH=/a Environment=ANTIGRAVITY_OAUTH_CLIENT_SECRET=${ANTIGRAVITY_SECRET}" "$SVCFILE"
-    sudo systemctl daemon-reload
-    log "ANTIGRAVITY_OAUTH_CLIENT_SECRET injected"
+# IMPORTANT: Read secret from environment variable, not hardcoded!
+# Set ANTIGRAVITY_OAUTH_CLIENT_SECRET in your environment before running this script
+# Example: export ANTIGRAVITY_OAUTH_CLIENT_SECRET="your-secret-here"
+SERVICE_FILE="/etc/systemd/system/omniroute.service"
+if [[ "$DRY_RUN" == false ]]; then
+  if [[ -f "$SERVICE_FILE" ]]; then
+    ANTIGRAVITY_SECRET="${ANTIGRAVITY_OAUTH_CLIENT_SECRET:-}"
+    if [[ -n "$ANTIGRAVITY_SECRET" ]]; then
+      if grep -q "ANTIGRAVITY_OAUTH_CLIENT_SECRET=$ANTIGRAVITY_SECRET" "$SERVICE_FILE" 2>/dev/null; then
+        log "Antigravity secret already configured in service"
+      else
+        log "Updating Antigravity secret in systemd service..."
+        # Remove old line and add new one
+        sudo sed -i '/ANTIGRAVITY_OAUTH_CLIENT_SECRET/d' "$SERVICE_FILE"
+        sudo sed -i "/Environment=PATH=/a Environment=ANTIGRAVITY_OAUTH_CLIENT_SECRET=$ANTIGRAVITY_SECRET" "$SERVICE_FILE"
+        sudo systemctl daemon-reload
+        log "Antigravity secret updated in service"
+      fi
+    else
+      log "WARNING: ANTIGRAVITY_OAUTH_CLIENT_SECRET not set in environment"
+    fi
   fi
 fi
 
@@ -119,7 +127,6 @@ if [[ "$DRY_RUN" == true ]]; then
 else
   log "Restarting omniroute service..."
   if sudo systemctl restart omniroute 2>/dev/null; then
-    # Wait for service to come up
     for i in $(seq 1 15); do
       sleep 1
       if systemctl is-active --quiet omniroute 2>/dev/null; then
@@ -138,9 +145,8 @@ fi
 # ── 5. Verify catalog ─────────────────────────────────────────────────────────
 if [[ "$DRY_RUN" == false ]]; then
   log "Verifying catalog..."
-  sleep 3  # give service a moment to fully initialize
+  sleep 3
 
-  # Read API key from env or data dir
   OR_KEY="${OMNIROUTE_API_KEY:-}"
   if [[ -z "$OR_KEY" ]]; then
     ENV_FILE="${DATA_DIR:-/home/openclaw/.openclaw/workspace}/.env"
@@ -159,7 +165,6 @@ if [[ "$DRY_RUN" == false ]]; then
     if [[ "$ERROR" == "Invalid provider" ]]; then
       log "WARNING: catalog verification failed — 'byteplus' not recognized. Patch may not have taken effect."
     elif [[ -n "$RESULT" ]]; then
-      # Clean up test connection
       CONN_ID="$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('connection',{}).get('id',''))" 2>/dev/null || echo '')"
       [[ -n "$CONN_ID" ]] && curl -sf -X DELETE "http://localhost:${OR_PORT}/api/providers/$CONN_ID" \
         -H "Authorization: Bearer $OR_KEY" >/dev/null 2>&1 || true
