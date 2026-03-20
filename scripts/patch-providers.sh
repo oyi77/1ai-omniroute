@@ -144,6 +144,17 @@ CUSTOM_PROVIDERS = [
         "website": "https://thinkingmachin.es",
         "apiHint": "API key from Thinking Machines AI — Philippine AI provider (tml-...)",
     },
+    # ── OpenCode Zen provider ──────────────────────────────────────────────────
+    {
+        "id": "opencode-zen",
+        "alias": "oczen",
+        "name": "OpenCode Zen",
+        "icon": "terminal",
+        "color": "#00E676",
+        "textIcon": "OZ",
+        "website": "https://opencode.ai/zen",
+        "apiHint": "OpenCode Zen API key (oczen_...)",
+    },
 ]
 
 

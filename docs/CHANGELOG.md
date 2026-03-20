@@ -85,3 +85,16 @@ cd 1ai-omniroute
 ---
 
 *This changelog is maintained manually. Please update it with each significant change.*
+
+## [1.1.0] - 2026-03-21
+
+### Added
+- **OpenCode Zen Provider**
+  - Added to custom provider catalog patch
+  - Provider ID: `opencode-zen`
+  - Alias: `oczen`
+  - API key format: `oczen_...`
+  - Description: OpenCode AI provider for advanced code generation
+
+### Updated
+- Provider catalog now includes 10 custom providers (was 9)
