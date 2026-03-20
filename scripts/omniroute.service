@@ -1,0 +1,19 @@
+[Unit]
+Description=OmniRoute AI Router
+After=network.target
+
+[Service]
+Type=simple
+User=openclaw
+WorkingDirectory=/home/openclaw/.openclaw/workspace
+ExecStart=/home/openclaw/.npm-global/bin/omniroute --no-open --port 20128
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+Environment=HOME=/home/openclaw
+Environment=PATH=/home/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+Environment=ANTIGRAVITY_OAUTH_CLIENT_SECRET=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
+
+[Install]
+WantedBy=multi-user.target
