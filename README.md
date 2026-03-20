@@ -182,3 +182,64 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 **Status**: Actively maintained. All patches tested with OmniRoute v2.7.8+.
+
+## Batch Add API Keys
+
+Instead of adding API keys one by one through the UI, you can batch add them from a JSON file:
+
+### 1. Create your API keys config
+
+```bash
+cp api-keys.json.example api-keys.json
+```
+
+### 2. Edit with your API keys
+
+```bash
+nano api-keys.json
+```
+
+Example:
+```json
+{
+  "providers": {
+    "opencode-zen": {
+      "api_key": "oczen_abc123...",
+      "name": "OpenCode Zen",
+      "priority": 1,
+      "default_model": "opencode-zen/default"
+    },
+    "openai": {
+      "api_key": "sk-abc123...",
+      "name": "OpenAI",
+      "priority": 10,
+      "default_model": "openai/gpt-4o"
+    }
+  }
+}
+```
+
+### 3. Run the batch adder
+
+```bash
+# Add all providers from api-keys.json
+./scripts/batch-add-providers.sh
+
+# Or dry run to see what would be added
+./scripts/batch-add-providers.sh --dry-run
+
+# Or add a single provider
+./scripts/batch-add-providers.sh opencode-zen
+
+# List current providers
+./scripts/batch-add-providers.sh --list
+```
+
+### 4. Restart OmniRoute
+
+```bash
+sudo systemctl restart omniroute
+```
+
+The providers will now appear in the OmniRoute UI!
+

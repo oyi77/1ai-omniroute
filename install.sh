@@ -216,3 +216,18 @@ echo ""
 echo "For updates: ~/.omniroute/omniroute-update.sh"
 echo "Documentation: https://github.com/oyi77/1ai-omniroute"
 echo ""
+
+# ─── Install API Keys Template ─────────────────────────────────────────────
+
+log "Installing API keys template..."
+
+if [ -f "${SOURCE_DIR}/api-keys.json.example" ]; then
+    if [ ! -f "${INSTALL_DIR}/api-keys.json" ]; then
+        cp -v "${SOURCE_DIR}/api-keys.json.example" "${INSTALL_DIR}/api-keys.json"
+        warn "Edit ${INSTALL_DIR}/api-keys.json to add your API keys"
+    else
+        log "api-keys.json already exists, skipping"
+    fi
+else
+    warn "api-keys.json.example not found in source"
+fi

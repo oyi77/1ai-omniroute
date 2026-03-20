@@ -1,0 +1,49 @@
+{
+  "_comment": "1ai-omniroute API Keys Configuration",
+  "_instructions": "Copy this file to api-keys.json and fill in your API keys",
+  
+  "providers": {
+    "opencode-zen": {
+      "api_key": "YOUR_OPENCODE_ZEN_API_KEY",
+      "name": "OpenCode Zen",
+      "priority": 1,
+      "default_model": "opencode-zen/default"
+    },
+    "byteplus": {
+      "api_key": "YOUR_BYTEPLUS_API_KEY",
+      "name": "BytePlus Seedance",
+      "priority": 2,
+      "default_model": "byteplus/seedance-1.0"
+    },
+    "laozhang": {
+      "api_key": "YOUR_LAOZHANG_API_KEY",
+      "name": "LaoZhang AI",
+      "priority": 3,
+      "default_model": "laozhang/sora"
+    },
+    "replicate": {
+      "api_key": "YOUR_REPLICATE_API_KEY",
+      "name": "Replicate",
+      "priority": 4,
+      "default_model": "replicate/black-forest-labs/flux-1.1-pro"
+    },
+    "falai": {
+      "api_key": "YOUR_FALAI_API_KEY",
+      "name": "Fal.ai",
+      "priority": 5,
+      "default_model": "falai/flux/dev"
+    },
+    "openai": {
+      "api_key": "YOUR_OPENAI_API_KEY",
+      "name": "OpenAI",
+      "priority": 10,
+      "default_model": "openai/gpt-4o"
+    },
+    "anthropic": {
+      "api_key": "YOUR_ANTHROPIC_API_KEY",
+      "name": "Anthropic",
+      "priority": 11,
+      "default_model": "anthropic/claude-sonnet-4-6"
+    }
+  }
+}
