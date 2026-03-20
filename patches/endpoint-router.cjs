@@ -7,7 +7,6 @@
  * WHAT THIS PATCHES:
  * - Adds missing endpoint aliases (e.g., /v1/generate → /v1/images/generations)
  * - Enhances content-type detection for media endpoints
- * - Adds fallback routing for multimodal requests
  * 
  * MODULAR: Loaded automatically on OmniRoute startup
  * SURVIVES UPDATES: Re-applied on each startup
@@ -66,90 +65,61 @@ const ENDPOINT_MAP = {
   '/v1/audiogen': '/v1/music/generations',
 };
 
-// Content type detection for media endpoints
-const MEDIA_CONTENT_TYPES = {
-  image: ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/octet-stream'],
-  video: ['video/mp4', 'video/webm', 'video/quicktime', 'application/octet-stream'],
-  audio: ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp3', 'audio/flac', 'application/octet-stream'],
-};
-
-// ─── Module Interception ─────────────────────────────────────────────────────
-
-const originalRequire = require;
+// ─── Simple HTTP Interception ───────────────────────────────────────────────
 
 /**
- * Patch the HTTP server to intercept requests and redirect endpoints
+ * Patch HTTP server to redirect endpoint aliases
  */
-function patchServer() {
-  // Find the open-sse module that handles routing
-  const openSsePath = originalRequire.resolve('@omniroute/open-sse');
-  if (!openSsePath) {
-    console.log('[endpoint-router] ⚠ open-sse module not found — skipping');
-    return;
-  }
-
-  // Intercept the createServer function
-  const http = originalRequire('http');
-  const originalCreateServer = http.createServer;
-
-  http.createServer = function patchedCreateServer(options, listener) {
-    // If no listener passed, treat options as listener
-    if (typeof options === 'function') {
-      listener = options;
-      options = {};
-    }
-
-    const patchedListener = function patchedListener(req, res) {
-      // Check if we need to redirect the endpoint
-      const originalUrl = req.url;
-      let redirected = false;
-
-      for (const [alias, target] of Object.entries(ENDPOINT_MAP)) {
-        if (originalUrl.startsWith(alias)) {
-          // Redirect the request
-          const newPath = originalUrl.replace(alias, target);
-          console.log(`[endpoint-router] Redirected: ${originalUrl} → ${newPath}`);
-          req.url = newPath;
-          redirected = true;
-          break;
-        }
+function patchHttpServer() {
+  try {
+    const http = require('http');
+    const originalCreateServer = http.createServer;
+    
+    http.createServer = function patchedCreateServer(options, listener) {
+      // Handle both (listener) and (options, listener) signatures
+      if (typeof options === 'function') {
+        listener = options;
+        options = {};
       }
-
-      // Enhance content-type detection for media endpoints
-      if (!redirected && MEDIA_CONTENT_TYPES) {
-        const contentType = req.headers['content-type'];
+      
+      // Create patched listener that redirects URLs
+      const patchedListener = function patchedListener(req, res) {
+        const originalUrl = req.url;
         
-        if (originalUrl.includes('/v1/images/') || originalUrl.includes('/v1/videos/') || originalUrl.includes('/v1/music/')) {
-          if (!contentType || contentType === 'application/octet-stream') {
-            // Try to detect content type from URL or other headers
-            const userAgent = req.headers['user-agent'] || '';
-            if (userAgent.includes('curl') || userAgent.includes('wget')) {
-              req.headers['content-type'] = 'application/json';
-            }
+        // Check if URL matches any alias
+        for (const [alias, target] of Object.entries(ENDPOINT_MAP)) {
+          if (originalUrl.startsWith(alias)) {
+            // Redirect the request
+            const newPath = originalUrl.replace(alias, target);
+            console.log(`[endpoint-router] Redirected: ${originalUrl} → ${newPath}`);
+            req.url = newPath;
+            break;
           }
         }
-      }
-
-      // Call the original listener
-      return originalListener.call(this, req, res);
+        
+        // Call original listener
+        return listener.call(this, req, res);
+      };
+      
+      // Call original createServer with patched listener
+      return originalCreateServer.call(this, options, patchedListener);
     };
-
-    return originalCreateServer.call(this, options, patchedListener);
-  };
-
-  console.log('[endpoint-router] ✅ HTTP server patched for endpoint aliases');
-}
-
-// ─── Execution ───────────────────────────────────────────────────────────────
-
-function applyPatch() {
-  try {
-    patchServer();
-    console.log('[endpoint-router] 🚀 Enhanced endpoint routing active');
+    
+    console.log('[endpoint-router] ✅ HTTP server patched for endpoint aliases');
   } catch (e) {
-    console.error('[endpoint-router] ✖ Patch failed:', e.message);
+    console.error('[endpoint-router] ✖ Failed to patch HTTP server:', e.message);
   }
 }
 
-// Apply patch when module is loaded
+// ─── Module Export (for require-based patches) ──────────────────────────────
+
+/**
+ * Main patch function
+ */
+function applyPatch() {
+  patchHttpServer();
+  console.log('[endpoint-router] 🚀 Enhanced endpoint routing active');
+}
+
+// Apply patch immediately when module is loaded
 applyPatch();
