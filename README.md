@@ -243,3 +243,54 @@ sudo systemctl restart omniroute
 
 The providers will now appear in the OmniRoute UI!
 
+
+## Available Patches
+
+| Patch | Description | Status |
+|-------|-------------|--------|
+| **antigravity-no-projectid.cjs** | Fixes "Missing Google projectId" error | ✅ Working |
+| **endpoint-router.cjs** | Adds endpoint aliases (/v1/dalle, /v1/sora, etc.) | ✅ Working |
+| **response-cache.cjs** | Cache responses to reduce API calls | ✅ Working |
+| **enhanced-logging.cjs** | Detailed logging for debugging | ✅ Working |
+| **semantic-cache.cjs** | Cache based on query similarity | ✅ Working |
+
+## New Patches Details
+
+### Response Cache
+- **Purpose**: Reduce API calls by caching responses
+- **Features**: TTL-based expiration, configurable size, auto-cleanup
+- **Config**: 5 min TTL, 1000 max entries
+
+### Enhanced Logging
+- **Purpose**: Better debugging and monitoring
+- **Features**: Request/response logging, timing, token tracking
+- **Log File**: `~/.omniroute/omniroute.log`
+
+### Semantic Cache
+- **Purpose**: Cache responses based on query similarity
+- **Features**: Embedding-based comparison, configurable threshold
+- **Similarity**: 85% threshold
+- **Providers**: Local, OpenAI, Ollama
+
+## Patch Configuration
+
+All patches can be configured by editing the .cjs files in `~/.omniroute/patches/`.
+
+### Example: Adjust similarity threshold
+Edit `semantic-cache.cjs`:
+```javascript
+const SEMANTIC_CACHE_CONFIG = {
+  similarityThreshold: 0.90, // Change from 0.85 to 0.90
+  // ...
+};
+```
+
+### Example: Change cache TTL
+Edit `response-cache.cjs`:
+```javascript
+const CACHE_CONFIG = {
+  ttl: 10 * 60 * 1000, // Change from 5 to 10 minutes
+  // ...
+};
+```
+
