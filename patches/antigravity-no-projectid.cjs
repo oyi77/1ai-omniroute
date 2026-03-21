@@ -19,13 +19,11 @@
 
 // ─── Detection ────────────────────────────────────────────────────────────────
 
-var CHUNK_GLOB = '[root-of-the-server]__f0f9eb3f._.js';
-
 /** The minified string in the ORIGINAL (unpatched) chunk */
 var THROW_EXPR = 'if(!a)throw Error("Missing Google projectId for Antigravity account. Please reconnect OAuth so OmniRoute can fetch your real Cloud Code project (loadCodeAssist).")';
 
-/** The replacement: no throw, auto-fetch projectId (CONTINUE normal flow) */
-var PATCH_EXPR = 'if(!a){let c;try{c=await(await fetch("https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${o?.accessToken||""}`,"User-Agent":"google-api-nodejs-client/9.15.1","X-Goog-Api-Client":"google-cloud-sdk vscode_cloudshelleditor/0.1","Client-Metadata":"{"ideType":"ANTIGRAVITY","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"},body:JSON.stringify({metadata:{ideType:"ANTIGRAVITY",platform:"PLATFORM_UNSPECIFIED",pluginType:"GEMINI"}})})).json()}catch(e){}let p=c?.cloudaicompanionProject;a="object"==typeof p&&null!==p&&p.id?p.id:"object"==typeof p&&null!==p?p.id||null:null;}';
+/** The replacement: no throw, just skip projectId requirement */
+var PATCH_EXPR = 'if(!a){a=null}/* projectId auto-skip */';
 
 // ─── Chunk Discovery & Patching ─────────────────────────────────────────────
 
@@ -33,25 +31,67 @@ var fs = require('fs');
 var path = require('path');
 
 /**
- * Recursively find the chunk file matching CHUNK_GLOB
+ * Find chunk file containing the target expression
+ * Searches for [root-of-the-server]__*.js files that contain THROW_EXPR
  */
-function findChunk(dir, filename, depth) {
-  if (depth === undefined) depth = 0;
-  if (depth > 6) return null; // safety limit
-
+function findChunkByContent(chunksDir) {
   try {
-    var entries = fs.readdirSync(dir, { withFileTypes: true });
+    var entries = fs.readdirSync(chunksDir, { withFileTypes: true });
     for (var i = 0; i < entries.length; i++) {
       var entry = entries[i];
-      var full = path.join(dir, entry.name);
-      if (entry.name === filename) return full;
-      if (entry.isDirectory()) {
-        var found = findChunk(full, filename, depth + 1);
-        if (found) return found;
-      }
+      if (!entry.isFile() || !entry.name.endsWith('.js')) continue;
+      
+      // Only check files matching the pattern
+      if (entry.name.indexOf('[root-of-the-server]') === -1) continue;
+      
+      var fullPath = path.join(chunksDir, entry.name);
+      try {
+        var content = fs.readFileSync(fullPath, 'utf-8');
+        if (content.indexOf(THROW_EXPR) !== -1) {
+          console.log('[antigravity-patch] 🎯 Found target chunk:', entry.name);
+          return fullPath;
+        }
+        if (content.indexOf(PATCH_EXPR) !== -1) {
+          console.log('[antigravity-patch] ✅ Found already-patched chunk:', entry.name);
+          return fullPath;
+        }
+      } catch (_) {}
     }
   } catch (_) {}
+  return null;
+}
 
+/**
+ * Find the .next directory in known omniroute locations
+ */
+function findNextDir() {
+  var os = require('os');
+  var home = os.homedir();
+  
+  // Known locations for omniroute .next directory
+  var candidates = [
+    // Global npm install location
+    path.join(home, '.npm-global', 'lib', 'node_modules', 'omniroute', 'app', '.next'),
+    // Standard npm global location
+    '/usr/lib/node_modules/omniroute/app/.next',
+    '/usr/local/lib/node_modules/omniroute/app/.next',
+    // Relative to patch directory (for local dev)
+    path.join(__dirname, '..', '.next'),
+    path.join(__dirname, '.next'),
+    // Current working directory
+    path.join(process.cwd(), 'app', '.next'),
+    path.join(process.cwd(), '.next'),
+  ];
+  
+  for (var i = 0; i < candidates.length; i++) {
+    try {
+      if (fs.existsSync(candidates[i])) {
+        console.log('[antigravity-patch] 📁 Found .next at:', candidates[i]);
+        return candidates[i];
+      }
+    } catch (_) {}
+  }
+  
   return null;
 }
 
@@ -60,22 +100,28 @@ function findChunk(dir, filename, depth) {
  */
 function applyPatch() {
   // 1. Locate the .next directory
-  var omniDir = __dirname;
-  var nextDir = path.join(omniDir, '.next');
+  var nextDir = findNextDir();
 
-  if (!fs.existsSync(nextDir)) {
-    console.log('[antigravity-patch] ⚠ .next directory not found — skipping (development mode?)');
+  if (!nextDir) {
+    console.log('[antigravity-patch] ⚠ .next directory not found in any known location — skipping');
     return;
   }
 
-  // 2. Find the chunk file
-  var chunkPath = findChunk(nextDir, CHUNK_GLOB);
+  // 2. Find the chunks directory
+  var chunksDir = path.join(nextDir, 'server', 'chunks');
+  if (!fs.existsSync(chunksDir)) {
+    console.log('[antigravity-patch] ⚠ chunks directory not found at:', chunksDir);
+    return;
+  }
+
+  // 3. Find the chunk file by content (version-independent)
+  var chunkPath = findChunkByContent(chunksDir);
   if (!chunkPath) {
-    console.log('[antigravity-patch] ⚠ chunk not found — maybe different OmniRoute version?');
+    console.log('[antigravity-patch] ⚠ No chunk with projectId error found — maybe already patched or different version');
     return;
   }
 
-  // 3. Read the chunk
+  // 4. Read the chunk
   var content;
   try {
     content = fs.readFileSync(chunkPath, 'utf-8');
@@ -84,22 +130,22 @@ function applyPatch() {
     return;
   }
 
-  // 4. Check if already patched
+  // 5. Check if already patched
   if (content.indexOf(PATCH_EXPR) !== -1) {
     console.log('[antigravity-patch] ✅ already patched (projectId auto-fetch active)');
     return;
   }
 
-  // 5. Check if the unpatched expression exists
+  // 6. Check if the unpatched expression exists
   if (content.indexOf(THROW_EXPR) === -1) {
     console.log('[antigravity-patch] ⚠ throw expression not found — maybe already patched or different version');
     return;
   }
 
-  // 6. Apply the patch
+  // 7. Apply the patch
   var patched = content.replace(THROW_EXPR, PATCH_EXPR);
 
-  // 7. Write back
+  // 8. Write back
   try {
     fs.writeFileSync(chunkPath, patched, 'utf-8');
     console.log('[antigravity-patch] 🩹 patched successfully — projectId auto-fetch enabled');
