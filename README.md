@@ -294,3 +294,54 @@ const CACHE_CONFIG = {
 };
 ```
 
+
+## Provider Monitor & Optimizer
+
+Monitor and optimize free provider usage with automatic health tracking.
+
+### Features
+- ✅ Track success/failure rates
+- ✅ Monitor response times
+- ✅ Auto-disable problematic providers
+- ✅ Health scoring (0-100)
+- ✅ Usage statistics
+- ✅ Recommendations
+
+### API Endpoints
+
+#### Get Provider Statistics
+```bash
+curl http://localhost:20128/api/provider-monitor/stats
+```
+
+#### Get Health Status
+```bash
+curl http://localhost:20128/api/provider-monitor/health
+```
+
+### Example Response
+```json
+{
+  "antigravity": {
+    "totalRequests": 150,
+    "successfulRequests": 142,
+    "failedRequests": 8,
+    "successRate": 0.947,
+    "successRatePercent": "94.67%",
+    "avgDuration": 2345,
+    "avgDurationMs": "2345ms",
+    "healthScore": 85,
+    "healthStatus": "healthy"
+  }
+}
+```
+
+### Auto-Disable
+Providers with success rate < 30% are automatically disabled after 10 requests.
+
+### Recommendations
+The system provides recommendations:
+- ⚠️ Warning: Low success rate
+- 🐌 Performance: Slow response time
+- 💡 Recommendation: Best provider to use
+
