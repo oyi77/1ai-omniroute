@@ -443,3 +443,163 @@ const CIRCUIT_BREAKER_CONFIG = {
 4. **Test requests succeed** → Circuit CLOSES (recovered)
 5. **Test requests fail** → Circuit stays OPEN
 
+
+## Free AI Providers (Based on Research)
+
+Based on 2026 research, these free AI API providers have been added to OmniRoute:
+
+### ✅ Already Configured (No API Key Needed)
+1. **antigravity** - 70+ OAuth accounts (Claude, GPT, Gemini)
+2. **G4F.dev** - Keyless aggregator (multiple models)
+3. **Pollinations** - Keyless image/text generation
+4. **uncloseai** - Keyless models (Hermes-3, Qwen)
+
+### 🔑 Free Tier Providers (API Key Required)
+5. **Google AI Studio** - Gemini 2.5 Pro, Flash (250K TPM free)
+6. **Groq** - Llama 3.3 70B, Qwen3 (1K req/day free)
+7. **OpenRouter** - DeepSeek R1, Llama 4 (50 req/day free)
+8. **HuggingFace** - Thousands of models (free inference)
+9. **GitHub Models** - GPT-4o, GPT-4.1, o3 (50-150 req/day free)
+10. **NVIDIA NIM** - DeepSeek R1, Llama (1K credits free)
+
+### How to Get Free API Keys
+
+#### Google AI Studio
+1. Go to https://aistudio.google.com/
+2. Sign in with Google account
+3. Click "Get API Key"
+4. Copy the key
+
+#### Groq
+1. Go to https://console.groq.com/
+2. Sign up for free account
+3. Go to API Keys section
+4. Create new API key
+
+#### OpenRouter
+1. Go to https://openrouter.ai/
+2. Sign up for free account
+3. Go to Keys section
+4. Create new API key
+
+#### HuggingFace
+1. Go to https://huggingface.co/
+2. Sign up for free account
+3. Go to Settings → Access Tokens
+4. Create new token
+
+#### GitHub Models
+1. Go to https://github.com/marketplace/models
+2. Sign in with GitHub account
+3. Get API key from dashboard
+
+#### NVIDIA NIM
+1. Go to https://build.nvidia.com/
+2. Sign up for free account
+3. Go to API section
+4. Get API key
+
+### Update API Keys in Database
+
+After getting API keys, update them in the database:
+
+```bash
+# Update Google AI Studio key
+sqlite3 ~/.omniroute/storage.sqlite << 'SQL'
+UPDATE provider_connections 
+SET api_key = 'YOUR_GOOGLE_AI_STUDIO_KEY'
+WHERE name = 'Google AI Studio (Gemini Free)';
+SQL
+
+# Update Groq key
+sqlite3 ~/.omniroute/storage.sqlite << 'SQL'
+UPDATE provider_connections 
+SET api_key = 'YOUR_GROQ_KEY'
+WHERE name = 'Groq (Llama Free)';
+SQL
+
+# Update OpenRouter key
+sqlite3 ~/.omniroute/storage.sqlite << 'SQL'
+UPDATE provider_connections 
+SET api_key = 'YOUR_OPENROUTER_KEY'
+WHERE name = 'OpenRouter (Free Tier)';
+SQL
+
+# Update HuggingFace key
+sqlite3 ~/.omniroute/storage.sqlite << 'SQL'
+UPDATE provider_connections 
+SET api_key = 'YOUR_HUGGINGFACE_KEY'
+WHERE name = 'HuggingFace (Free Inference)';
+SQL
+
+# Update GitHub Models key
+sqlite3 ~/.omniroute/storage.sqlite << 'SQL'
+UPDATE provider_connections 
+SET api_key = 'YOUR_GITHUB_MODELS_KEY'
+WHERE name = 'GitHub Models (Free Tier)';
+SQL
+
+# Update NVIDIA NIM key
+sqlite3 ~/.omniroute/storage.sqlite << 'SQL'
+UPDATE provider_connections 
+SET api_key = 'YOUR_NVIDIA_NIM_KEY'
+WHERE name = 'NVIDIA NIM (Free Tier)';
+SQL
+```
+
+### Restart OmniRoute
+
+After updating API keys:
+
+```bash
+sudo systemctl restart omniroute
+```
+
+### Test Providers
+
+```bash
+# Test Google AI Studio
+curl -X POST http://localhost:20128/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"openai-compatible-chat/gemini-2.5-flash","messages":[{"role":"user","content":"Hello"}],"max_tokens":10}'
+
+# Test Groq
+curl -X POST http://localhost:20128/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"openai-compatible-chat/llama-3.3-70b","messages":[{"role":"user","content":"Hello"}],"max_tokens":10}'
+```
+
+### Rate Limits (Free Tier)
+
+| Provider | Rate Limit | Daily Limit | Monthly Limit |
+|----------|------------|-------------|---------------|
+| **Google AI Studio** | 5-15 RPM | 250K TPM | Unlimited |
+| **Groq** | 30-60 RPM | 1K req/day | - |
+| **OpenRouter** | 20 RPM | 50 req/day | - |
+| **HuggingFace** | Variable | Variable | Variable |
+| **GitHub Models** | 10-15 RPM | 50-150 req/day | - |
+| **NVIDIA NIM** | 40 RPM | 1K credits | - |
+
+### Benefits of Using Free Providers
+
+1. **Cost Savings** - No API costs for testing and development
+2. **Model Variety** - Access to different AI models
+3. **Redundancy** - Multiple providers for reliability
+4. **Learning** - Experiment with different models
+5. **Prototyping** - Build and test without costs
+
+### Limitations
+
+1. **Rate Limits** - Limited requests per minute/day
+2. **Model Availability** - Not all models available free
+3. **Quality** - Free models may be less capable
+4. **Support** - Limited support for free tier
+
+### Best Practices
+
+1. **Use Circuit Breaker** - Already configured to handle failures
+2. **Rotate Providers** - Use multiple providers to avoid rate limits
+3. **Monitor Usage** - Track which providers work best
+4. **Cache Responses** - Use response cache to reduce API calls
+5. **Fallback Strategy** - Have backup providers ready
+
