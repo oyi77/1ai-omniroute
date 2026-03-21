@@ -405,6 +405,59 @@ sudo systemctl cat omniroute
 
 ---
 
+## New Patches (March 2026)
+
+### Response Cache Patch
+
+**File**: `patches/response-cache.cjs`  
+**Type**: HTTP Interceptor  
+**Purpose**: Cache identical API responses to reduce duplicate calls and costs
+
+**Features**:
+- SHA-256 request hashing
+- Configurable TTL (default: 5 minutes)
+- Cache statistics endpoint: `GET /api/cache/stats`
+- Automatic cache cleanup
+
+### Enhanced Logging Patch
+
+**File**: `patches/enhanced-logging.cjs`  
+**Type**: HTTP Interceptor  
+**Purpose**: Detailed request/response logging for debugging
+
+**Features**:
+- Request/response logging to file: `/home/openclaw/.omniroute/omniroute.log`
+- Error tracking with stack traces
+- Performance metrics
+- Configurable log levels
+
+### Semantic Cache Patch
+
+**File**: `patches/semantic-cache.cjs`  
+**Type**: AI-Powered Cache  
+**Purpose**: Cache similar (not identical) requests using embeddings
+
+**Features**:
+- Cosine similarity matching
+- Configurable similarity threshold (default: 0.95)
+- Reduces API calls for semantically equivalent prompts
+
+### Provider Monitor Patch
+
+**File**: `patches/provider-monitor.cjs`  
+**Type**: Health Monitor  
+**Purpose**: Auto-monitor provider health and optimize routing
+
+**Features**:
+- Health check every 300 seconds
+- Latency tracking per provider
+- Success/failure rate monitoring
+- Endpoints:
+  - `GET /api/provider-monitor/stats`
+  - `GET /api/provider-monitor/health`
+
+---
+
 ## Adding New Patches
 
 To add a new modular patch:
