@@ -1,13 +1,15 @@
 /**
- * OpenClaw OmniRoute Modular Patch: Response Caching
- * ====================================================
- * Caches AI responses to reduce API calls and improve latency.
+ * OpenClaw OmniRoute Modular Patch: Response Caching (Fetch-Based)
+ * ================================================================
+ * Caches AI responses at the fetch layer to reduce API calls and improve latency.
  * 
  * Features:
  * - TTL-based cache expiration
  * - Configurable cache size
  * - Cache hit/miss logging
  * - Auto-cleanup of expired entries
+ * - Works with npm install AND git clone/self-build
+ * - Compatible with Next.js streaming responses
  */
 
 'use strict';
@@ -19,6 +21,7 @@ const CACHE_CONFIG = {
   ttl: 5 * 60 * 1000, // 5 minutes
   maxSize: 1000, // Maximum cache entries
   cleanupInterval: 60 * 1000, // Cleanup every minute
+  cacheablePaths: ['/v1/chat/completions', '/v1/completions'],
 };
 
 // ─── Cache Implementation ────────────────────────────────────────────────────
@@ -41,29 +44,35 @@ class ResponseCache {
   /**
    * Generate cache key from request
    */
-  generateKey(model, messages, temperature = 0.7) {
-    const content = JSON.stringify({
-      model,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
-      temperature
-    });
-    
-    // Simple hash function
-    let hash = 0;
-    for (let i = 0; i < content.length; i++) {
-      const char = content.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
+  generateKey(url, body) {
+    try {
+      const content = JSON.stringify({
+        url,
+        model: body?.model,
+        messages: body?.messages?.map(m => ({ role: m.role, content: m.content })),
+        temperature: body?.temperature || 0.7,
+        max_tokens: body?.max_tokens
+      });
+      
+      // Simple hash function
+      let hash = 0;
+      for (let i = 0; i < content.length; i++) {
+        const char = content.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+      }
+      
+      return `cache_${Math.abs(hash).toString(36)}`;
+    } catch (e) {
+      return null;
     }
-    
-    return `cache_${Math.abs(hash).toString(36)}`;
   }
   
   /**
    * Get cached response
    */
   get(key) {
-    if (!this.config.enabled) return null;
+    if (!this.config.enabled || !key) return null;
     
     const entry = this.cache.get(key);
     if (!entry) {
@@ -87,7 +96,7 @@ class ResponseCache {
    * Set cached response
    */
   set(key, data) {
-    if (!this.config.enabled) return;
+    if (!this.config.enabled || !key) return;
     
     // Check size limit
     if (this.cache.size >= this.config.maxSize) {
@@ -165,80 +174,94 @@ class ResponseCache {
 const responseCache = new ResponseCache();
 
 /**
- * Patch HTTP server to add caching
+ * Patch fetch to add caching at the API call layer
+ * This avoids conflicts with Next.js streaming responses
  */
-function patchHttpServer() {
+function patchFetch() {
   try {
-    const http = require('http');
-    const originalCreateServer = http.createServer;
+    const originalFetch = globalThis.fetch;
     
-    http.createServer = function patchedCreateServer(options, listener) {
-      if (typeof options === 'function') {
-        listener = options;
-        options = {};
-      }
+    globalThis.fetch = async function patchedFetch(url, options = {}) {
+      // Check if this is a cacheable request
+      const urlString = typeof url === 'string' ? url : url?.url || '';
+      const isCacheable = CACHE_CONFIG.cacheablePaths.some(path => 
+        urlString.includes(path)
+      );
       
-      const patchedListener = function patchedListener(req, res) {
-        // Only cache POST requests to /v1/chat/completions
-        if (req.method === 'POST' && req.url === '/v1/chat/completions') {
-          // Intercept response
-          const originalWrite = res.write;
-          const originalEnd = res.end;
-          let responseBody = '';
+      if (isCacheable && options.method === 'POST' && options.body) {
+        try {
+          // Parse request body
+          let body;
+          if (typeof options.body === 'string') {
+            body = JSON.parse(options.body);
+          } else {
+            body = options.body;
+          }
           
-          res.write = function(chunk, encoding, callback) {
-            if (chunk) {
-              responseBody += chunk.toString();
-            }
-            return originalWrite.call(this, chunk, encoding, callback);
-          };
+          // Generate cache key
+          const cacheKey = responseCache.generateKey(urlString, body);
           
-          res.end = function(chunk, encoding, callback) {
-            if (chunk) {
-              responseBody += chunk.toString();
-            }
-            
-            // Try to cache the response
+          // Check cache
+          const cachedResponse = responseCache.get(cacheKey);
+          if (cachedResponse) {
+            // Return cached response as a Response object
+            return new Response(JSON.stringify(cachedResponse), {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Cache': 'HIT',
+                'X-Cache-Key': cacheKey
+              }
+            });
+          }
+          
+          // Make actual request
+          const response = await originalFetch.call(this, url, options);
+          
+          // Cache successful responses
+          if (response.ok) {
             try {
-              const body = JSON.parse(responseBody);
-              if (body.choices && body.choices.length > 0) {
-                // Generate cache key from request
-                // Note: This is a simplified version
-                // In production, you'd need to read the request body
-                const cacheKey = `response_${Date.now()}`;
-                responseCache.set(cacheKey, body);
+              // Clone response to read body without consuming it
+              const clonedResponse = response.clone();
+              const data = await clonedResponse.json();
+              
+              if (data.choices && data.choices.length > 0) {
+                responseCache.set(cacheKey, data);
               }
             } catch (e) {
               // Not JSON or error, don't cache
             }
-            
-            return originalEnd.call(this, chunk, encoding, callback);
-          };
+          }
+          
+          return response;
+          
+        } catch (e) {
+          // Error in caching logic, fall back to original fetch
+          return originalFetch.call(this, url, options);
         }
-        
-        // Call original listener
-        return listener.call(this, req, res);
-      };
+      }
       
-      return originalCreateServer.call(this, options, patchedListener);
+      // Non-cacheable request, use original fetch
+      return originalFetch.call(this, url, options);
     };
     
-    console.log('[response-cache] ✅ HTTP server patched for response caching');
+    console.log('[response-cache] ✅ Fetch patched for response caching');
     
     // Export cache for external access
     global.responseCache = responseCache;
     
   } catch (e) {
-    console.error('[response-cache] ✖ Failed to patch HTTP server:', e.message);
+    console.error('[response-cache] ✖ Failed to patch fetch:', e.message);
   }
 }
 
 // ─── Execution ───────────────────────────────────────────────────────────────
 
 function applyPatch() {
-  patchHttpServer();
+  patchFetch();
   console.log('[response-cache] 🚀 Response caching active');
   console.log(`[response-cache] 📊 Config: TTL=${CACHE_CONFIG.ttl/1000}s, MaxSize=${CACHE_CONFIG.maxSize}`);
+  console.log('[response-cache] 📊 Cacheable paths:', CACHE_CONFIG.cacheablePaths.join(', '));
 }
 
 // Apply patch when module is loaded

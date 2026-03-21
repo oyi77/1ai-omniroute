@@ -1,13 +1,14 @@
 /**
- * OpenClaw OmniRoute Modular Patch: Semantic Caching
- * ====================================================
- * Caches responses based on semantic similarity of queries.
+ * OpenClaw OmniRoute Modular Patch: Semantic Caching (Fetch-Based)
+ * ================================================================
+ * Caches responses based on semantic similarity of queries at the fetch layer.
  * 
  * Features:
  * - Embedding-based query similarity
  * - Configurable similarity threshold
  * - Multiple embedding providers support
- * - Cache warming and precomputation
+ * - Works with npm install AND git clone/self-build
+ * - Compatible with Next.js streaming responses
  */
 
 'use strict';
@@ -20,8 +21,8 @@ const SEMANTIC_CACHE_CONFIG = {
   maxCacheSize: 500,
   ttl: 30 * 60 * 1000, // 30 minutes
   embeddingProvider: 'local', // 'local', 'openai', 'ollama'
-  embeddingModel: 'all-MiniLM-L6-v2', // For local embeddings
   cleanupInterval: 5 * 60 * 1000, // 5 minutes
+  cacheablePaths: ['/v1/chat/completions', '/v1/completions'],
 };
 
 // ─── Embedding Providers ─────────────────────────────────────────────────────
@@ -56,7 +57,7 @@ class EmbeddingProvider {
     const words = text.toLowerCase().split(/\s+/);
     const embedding = new Array(384).fill(0);
     
-    words.forEach((word, index) => {
+    words.forEach((word) => {
       let hash = 0;
       for (let i = 0; i < word.length; i++) {
         hash = ((hash << 5) - hash) + word.charCodeAt(i);
@@ -166,7 +167,7 @@ class SemanticCache {
    * Find similar cached query
    */
   async findSimilar(query, model) {
-    if (!this.config.enabled) return null;
+    if (!this.config.enabled || !query) return null;
     
     // Get embedding for query
     const queryEmbedding = await this.embeddingProvider.getEmbedding(query);
@@ -218,7 +219,7 @@ class SemanticCache {
    * Set cached response
    */
   async set(query, model, data) {
-    if (!this.config.enabled) return;
+    if (!this.config.enabled || !query) return;
     
     const key = this.generateKey(query, model);
     
@@ -310,113 +311,100 @@ class SemanticCache {
 const semanticCache = new SemanticCache();
 
 /**
- * Patch HTTP server to add semantic caching
+ * Patch fetch to add semantic caching at the API call layer
+ * This avoids conflicts with Next.js streaming responses
  */
-function patchHttpServer() {
+function patchFetch() {
   try {
-    const http = require('http');
-    const originalCreateServer = http.createServer;
+    const originalFetch = globalThis.fetch;
     
-    http.createServer = function patchedCreateServer(options, listener) {
-      if (typeof options === 'function') {
-        listener = options;
-        options = {};
+    globalThis.fetch = async function patchedFetch(url, options = {}) {
+      // Check if this is a cacheable request
+      const urlString = typeof url === 'string' ? url : url?.url || '';
+      const isCacheable = SEMANTIC_CACHE_CONFIG.cacheablePaths.some(path => 
+        urlString.includes(path)
+      );
+      
+      if (isCacheable && options.method === 'POST' && options.body) {
+        try {
+          // Parse request body
+          let body;
+          if (typeof options.body === 'string') {
+            body = JSON.parse(options.body);
+          } else {
+            body = options.body;
+          }
+          
+          // Extract query from messages
+          const query = body?.messages
+            ?.filter(m => m.role === 'user')
+            ?.map(m => m.content)
+            ?.join(' ') || '';
+          const model = body?.model || 'default';
+          
+          // Try to get from semantic cache
+          const cachedResponse = await semanticCache.findSimilar(query, model);
+          
+          if (cachedResponse) {
+            // Return cached response as a Response object
+            return new Response(JSON.stringify(cachedResponse), {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Cache': 'SEMANTIC-HIT',
+                'X-Similarity': 'high'
+              }
+            });
+          }
+          
+          // Make actual request
+          const response = await originalFetch.call(this, url, options);
+          
+          // Cache successful responses
+          if (response.ok) {
+            try {
+              // Clone response to read body without consuming it
+              const clonedResponse = response.clone();
+              const data = await clonedResponse.json();
+              
+              if (data.choices && data.choices.length > 0) {
+                semanticCache.set(query, model, data);
+              }
+            } catch (e) {
+              // Not JSON or error, don't cache
+            }
+          }
+          
+          return response;
+          
+        } catch (e) {
+          // Error in caching logic, fall back to original fetch
+          return originalFetch.call(this, url, options);
+        }
       }
       
-      const patchedListener = function patchedListener(req, res) {
-        // Only cache POST requests to /v1/chat/completions
-        if (req.method === 'POST' && req.url === '/v1/chat/completions') {
-          // Read request body
-          let body = '';
-          req.on('data', chunk => {
-            body += chunk.toString();
-          });
-          
-          req.on('end', async () => {
-            try {
-              const requestData = JSON.parse(body);
-              const query = requestData.messages
-                ?.filter(m => m.role === 'user')
-                ?.map(m => m.content)
-                ?.join(' ') || '';
-              const model = requestData.model || 'default';
-              
-              // Try to get from semantic cache
-              const cachedResponse = await semanticCache.findSimilar(query, model);
-              
-              if (cachedResponse) {
-                // Return cached response
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify(cachedResponse));
-                return;
-              }
-              
-              // Intercept response for caching
-              const originalWrite = res.write;
-              const originalEnd = res.end;
-              let responseBody = '';
-              
-              res.write = function(chunk, encoding, callback) {
-                if (chunk) {
-                  responseBody += chunk.toString();
-                }
-                return originalWrite.call(this, chunk, encoding, callback);
-              };
-              
-              res.end = function(chunk, encoding, callback) {
-                if (chunk) {
-                  responseBody += chunk.toString();
-                }
-                
-                // Cache the response
-                try {
-                  const response = JSON.parse(responseBody);
-                  if (response.choices && response.choices.length > 0) {
-                    semanticCache.set(query, model, response);
-                  }
-                } catch (e) {
-                  // Not JSON or error, don't cache
-                }
-                
-                return originalEnd.call(this, chunk, encoding, callback);
-              };
-              
-              // Continue with original request
-              return listener.call(this, req, res);
-              
-            } catch (e) {
-              // Error parsing request, continue normally
-              return listener.call(this, req, res);
-            }
-          });
-          
-          return;
-        }
-        
-        // Call original listener for non-cacheable requests
-        return listener.call(this, req, res);
-      };
-      
-      return originalCreateServer.call(this, options, patchedListener);
+      // Non-cacheable request, use original fetch
+      return originalFetch.call(this, url, options);
     };
     
-    console.log('[semantic-cache] ✅ HTTP server patched for semantic caching');
+    console.log('[semantic-cache] ✅ Fetch patched for semantic caching');
     
     // Export cache for external access
     global.semanticCache = semanticCache;
     
   } catch (e) {
-    console.error('[semantic-cache] ✖ Failed to patch HTTP server:', e.message);
+    console.error('[semantic-cache] ✖ Failed to patch fetch:', e.message);
   }
 }
 
 // ─── Execution ───────────────────────────────────────────────────────────────
 
 function applyPatch() {
-  patchHttpServer();
+  patchFetch();
   console.log('[semantic-cache] 🚀 Semantic caching active');
   console.log(`[semantic-cache] 📊 Config: Similarity=${SEMANTIC_CACHE_CONFIG.similarityThreshold}, TTL=${SEMANTIC_CACHE_CONFIG.ttl/1000}s`);
   console.log(`[semantic-cache] 📊 Embedding: ${SEMANTIC_CACHE_CONFIG.embeddingProvider}`);
+  console.log('[semantic-cache] 📊 Cacheable paths:', SEMANTIC_CACHE_CONFIG.cacheablePaths.join(', '));
 }
 
 // Apply patch when module is loaded
