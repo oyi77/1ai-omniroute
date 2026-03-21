@@ -345,3 +345,101 @@ The system provides recommendations:
 - 🐌 Performance: Slow response time
 - 💡 Recommendation: Best provider to use
 
+
+## Provider Circuit Breaker (NEW!)
+
+Implements circuit breaker pattern for AI providers to prevent cascading failures.
+
+### Features
+- ✅ **Three states**: CLOSED (normal), OPEN (failing), HALF-OPEN (testing)
+- ✅ **Exponential backoff**: Smart retry with jitter
+- ✅ **Auto-recovery**: Periodic health checks
+- ✅ **Monitoring**: Real-time status and statistics
+- ✅ **Reset API**: Manual circuit breaker reset
+
+### API Endpoints
+
+#### Get Circuit Breaker Status
+```bash
+curl http://localhost:20128/api/circuit-breaker/status
+```
+
+#### Reset Circuit Breaker
+```bash
+# Reset all providers
+curl -X POST http://localhost:20128/api/circuit-breaker/reset \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# Reset specific provider
+curl -X POST http://localhost:20128/api/circuit-breaker/reset \
+  -H "Content-Type: application/json" \
+  -d '{"provider":"antigravity"}'
+```
+
+### Circuit States
+
+| State | Description | Behavior |
+|-------|-------------|----------|
+| **CLOSED** | Normal operation | Requests flow through, failures tracked |
+| **OPEN** | Failing | Requests fail fast, no calls made |
+| **HALF-OPEN** | Testing recovery | Limited requests to test if service recovered |
+
+### Configuration
+
+Edit `provider-circuit-breaker.cjs` to adjust:
+
+```javascript
+const CIRCUIT_BREAKER_CONFIG = {
+  failureThreshold: 5,        // Failures before opening circuit
+  successThreshold: 2,        // Successes to close circuit from half-open
+  resetTimeout: 30000,        // 30 seconds before testing recovery
+  maxRetries: 3,              // Max retries with exponential backoff
+  baseDelay: 1000,            // 1 second base delay
+  maxDelay: 10000,            // 10 seconds max delay
+};
+```
+
+### Example Status Response
+
+```json
+{
+  "enabled": true,
+  "totalBreakers": 4,
+  "breakers": {
+    "antigravity": {
+      "state": "CLOSED",
+      "failures": 0,
+      "stats": {
+        "totalRequests": 150,
+        "successfulRequests": 142,
+        "successRate": "94.67%",
+        "avgResponseTimeMs": "2345ms"
+      }
+    }
+  },
+  "summary": {
+    "totalRequests": 450,
+    "successRate": "92.44%",
+    "openCircuits": 0,
+    "halfOpenCircuits": 1,
+    "healthyCircuits": 3
+  }
+}
+```
+
+### Free Providers Monitored
+
+1. **antigravity** - 70+ OAuth accounts
+2. **G4F.dev** - Keyless aggregator
+3. **Pollinations** - Keyless image/text
+4. **uncloseai** - Keyless models (Hermes-3, Qwen)
+
+### How It Works
+
+1. **Request fails** → Increment failure counter
+2. **Failures exceed threshold** → Circuit OPENS
+3. **After reset timeout** → Circuit moves to HALF-OPEN
+4. **Test requests succeed** → Circuit CLOSES (recovered)
+5. **Test requests fail** → Circuit stays OPEN
+
