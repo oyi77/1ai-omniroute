@@ -24,15 +24,37 @@ const ENDPOINT_MAP = {
   '/v1/dalle': '/v1/images/generations',
   '/v1/stable-diffusion': '/v1/images/generations',
   '/v1/midjourney': '/v1/images/generations',
+  '/v1/flux': '/v1/images/generations',
+
+  // Image edit aliases
+  '/v1/edit': '/v1/images/edits',
+  '/v1/inpaint': '/v1/images/edits',
+  '/v1/img2img': '/v1/images/edits',
+  '/v1/image-edit': '/v1/images/edits',
+
+  // Image variation aliases
+  '/v1/vary': '/v1/images/variations',
+  '/v1/variation': '/v1/images/variations',
+  '/v1/image-variation': '/v1/images/variations',
   
-  // Video generation aliases
+  // Video generation aliases (t2v, i2v, f2v — all via /v1/videos/generations)
   '/v1/video': '/v1/videos/generations',
+  '/v1/t2v': '/v1/videos/generations',
+  '/v1/i2v': '/v1/videos/generations',
+  '/v1/f2v': '/v1/videos/generations',
+  '/v1/text-to-video': '/v1/videos/generations',
+  '/v1/image-to-video': '/v1/videos/generations',
+  '/v1/frame-to-video': '/v1/videos/generations',
   '/v1/sora': '/v1/videos/generations',
   '/v1/seedance': '/v1/videos/generations',
   '/v1/kling': '/v1/videos/generations',
   '/v1/runway': '/v1/videos/generations',
   '/v1/pika': '/v1/videos/generations',
   '/v1/animatediff': '/v1/videos/generations',
+  '/v1/cogvideo': '/v1/videos/generations',
+  '/v1/hunyuan': '/v1/videos/generations',
+  '/v1/veo': '/v1/videos/generations',
+  '/v1/hailuo': '/v1/videos/generations',
   
   // Vision/understanding aliases
   '/v1/vision': '/v1/chat/completions',
