@@ -23,9 +23,11 @@ function isClaudeModel(model) {
 
 function isAnthropicHost(hostname) {
   if (!hostname) return false;
+  // Only direct Anthropic API endpoints support cache_control.
+  // Antigravity routes Claude via Google Vertex AI which uses a different format
+  // and rejects unknown fields like cache_control with HTTP 400.
   return hostname.includes('anthropic.com') ||
-         hostname.includes('claude.ai') ||
-         hostname.includes('googleapis.com'); // Antigravity uses Google APIs for Claude
+         hostname.includes('claude.ai');
 }
 
 function isAnthropicPath(path) {
