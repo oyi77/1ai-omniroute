@@ -15,7 +15,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PATCH_SOURCE="${SCRIPT_DIR}/src"
+PATCH_SOURCE="$(dirname "$SCRIPT_DIR")/src"
 LOG_PREFIX="[patch-ui] $(date '+%Y-%m-%d %H:%M:%S')"
 
 for arg in "$@"; do
@@ -60,6 +60,15 @@ get_npm_path() {
   if [[ -d "/home/openclaw/.npm-global/lib/node_modules/omniroute" ]]; then
     echo "/home/openclaw/.npm-global/lib/node_modules/omniroute"
     return
+  fi
+  
+  if command -v omniroute &>/dev/null; then
+    OMNIROUTE_BIN="$(command -v omniroute)"
+    OMNIROUTE_DIR="$(dirname "$(dirname "$OMNIROUTE_BIN")")"
+    if [[ -d "${OMNIROUTE_DIR}/lib/node_modules/omniroute" ]]; then
+      echo "${OMNIROUTE_DIR}/lib/node_modules/omniroute"
+      return
+    fi
   fi
   
   if command -v npm &>/dev/null; then
