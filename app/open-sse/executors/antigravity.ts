@@ -351,12 +351,14 @@ export class AntigravityExecutor extends BaseExecutor {
     const retryAttemptsByUrl = {}; // Track retry attempts per URL
 
     // Auto-fetch projectId if missing (handles connections without projectId from old OAuth)
-    if (!credentials.projectId && credentials.accessToken) {
+    if (!credentials.projectId && credentials.accessToken && credentials.connectionId) {
       log?.info?.("ANTIGRAVITY", "No projectId found, attempting to fetch from loadCodeAssist...");
       const fetchedProjectId = await this.fetchProjectId(credentials, log);
       if (fetchedProjectId) {
         credentials.projectId = fetchedProjectId;
-        log?.info?.("ANTIGRAVITY", `Successfully fetched and set projectId: ${fetchedProjectId}`);
+        // Persist projectId to database so we don't need to fetch every time
+        await updateProviderConnection(credentials.connectionId, { project_id: fetchedProjectId });
+        log?.info?.("ANTIGRAVITY", `Successfully fetched and saved projectId: ${fetchedProjectId}`);
       } else {
         log?.warn?.("ANTIGRAVITY", "Could not fetch projectId - user may need to reconnect OAuth");
       }
@@ -370,17 +372,16 @@ export class AntigravityExecutor extends BaseExecutor {
       try {
         transformedBody = this.transformRequest(model, body, stream, credentials);
       } catch (transformError) {
-        // If transform fails due to missing projectId and we haven't tried fetching yet
-        if (transformError.message?.includes("Missing Google projectId") && credentials.accessToken) {
+        if (transformError.message?.includes("Missing Google projectId") && credentials.accessToken && credentials.connectionId) {
           log?.info?.("ANTIGRAVITY", "Transform failed - retrying with projectId fetch...");
           const fetchedProjectId = await this.fetchProjectId(credentials, log);
           if (fetchedProjectId) {
             credentials.projectId = fetchedProjectId;
-            // Retry transform with new projectId
+            await updateProviderConnection(credentials.connectionId, { project_id: fetchedProjectId });
             transformedBody = this.transformRequest(model, body, stream, credentials);
             log?.info?.("ANTIGRAVITY", `Retry successful with projectId: ${fetchedProjectId}`);
           } else {
-            throw transformError; // Re-throw original error if fetch also fails
+            throw transformError;
           }
         } else {
           throw transformError;
