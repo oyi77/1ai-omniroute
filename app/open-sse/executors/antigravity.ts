@@ -110,7 +110,8 @@ export class AntigravityExecutor extends BaseExecutor {
       // Accounts without valid projectId need to be onboarded
       log?.info?.("ANTIGRAVITY", "No projectId found, attempting auto-provision via onboardUser...");
       
-      const tierId = data.allowedTiers?.[0]?.id || "standard-tier";
+      const tierId = data.allowedTiers?.find(t => !t.userDefinedCloudaicompanionProject)?.id || 
+                     data.allowedTiers?.[0]?.id || "standard-tier";
       const onboardResponse = await fetch(onboardUserEndpoint, {
         method: "POST",
         headers,
