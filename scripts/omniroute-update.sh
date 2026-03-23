@@ -72,6 +72,29 @@ except: print('$MIN_VERSION')
   fi
 fi
 
+# ── 2c. CRITICAL: Rebuild better-sqlite3 for OmniRoute's Node.js version ────────
+# OmniRoute runs on Node 22 (ABI v127) but npm in PATH may be Node 25 (ABI v141).
+# better-sqlite3 is a native addon compiled for a specific ABI — if mismatched,
+# ALL chat completions return HTTP 500. Must use Node 22's npm to rebuild.
+OMNIROUTE_APP="/home/openclaw/.npm-global/lib/node_modules/omniroute/app"
+NODE22="/usr/bin/node"
+NODE22_NPM="$NODE22"
+
+if [[ -d "$OMNIROUTE_APP" ]] && [[ -f "$OMNIROUTE_APP/node_modules/better-sqlite3/package.json" ]]; then
+  if [[ "$DRY_RUN" == true ]]; then
+    log "DRY RUN: would run 'npm rebuild better-sqlite3' using Node 22"
+  else
+    log "Rebuilding better-sqlite3 for Node 22 ABI (fixes HTTP 500 errors)..."
+    if cd "$OMNIROUTE_APP" && "$NODE22_NPM" rebuild better-sqlite3 --build-from-source 2>&1 | tail -5; then
+      log "better-sqlite3 rebuilt successfully for Node 22 ✓"
+    else
+      log "WARNING: better-sqlite3 rebuild failed — server may crash with HTTP 500"
+    fi
+  fi
+else
+  log "WARNING: OmniRoute app directory not found at $OMNIROUTE_APP — skipping native module rebuild"
+fi
+
 # ── 2b. Verify patch system is active ───────────────────────────────────────
 PATCH_DIR="$SCRIPT_DIR/patches"
 
