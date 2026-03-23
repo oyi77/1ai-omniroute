@@ -225,6 +225,14 @@ export class AntigravityExecutor extends BaseExecutor {
       Array.isArray(c.parts) ? c.parts.length > 0 : true
     );
 
+    // Claude/Google requires conversation to end with user message, not assistant
+    // Remove empty trailing assistant messages that cause 400 prefill error
+    while (contents.length > 0 && 
+           contents[contents.length - 1].role === "model" &&
+           (!contents[contents.length - 1].parts || contents[contents.length - 1].parts.length === 0)) {
+      contents.pop();
+    }
+
     const transformedRequest = {
       ...body.request,
       ...(contents.length > 0 && { contents }),
