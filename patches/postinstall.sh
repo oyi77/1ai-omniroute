@@ -42,10 +42,46 @@ if [ -f "$ANTIGRAVITY" ]; then
   fi
 fi
 
+# === Patch 4: combo.ts - quota-aware default strategy ===
+COMBO="$OMNI_DIR/open-sse/services/combo.ts"
+if [ -f "$COMBO" ]; then
+  if ! grep -q 'quota-aware' "$COMBO" 2>/dev/null; then
+    sed -i 's/combo.strategy || "priority"/combo.strategy || "quota-aware"/' "$COMBO"
+    sed -i 's/import { checkFallbackError, formatRetryAfter, getProviderProfile } from ".\/accountFallback.ts"/import { checkFallbackError, formatRetryAfter, getProviderProfile, getAccountHealth } from ".\/accountFallback.ts";\nimport { getProviderConnections } from "..\/lib\/localDb.ts"/' "$COMBO"
+    sed -i '/sortModelsByUsage(models, comboName) {/i\
+async function sortModelsByQuota(models) {\
+  const results = await Promise.all(\
+    models.map(async (modelStr) => {\
+      const parsed = parseModel(modelStr);\
+      const provider = parsed.provider || parsed.providerAlias || "unknown";\
+      try {\
+        const connections = await getProviderConnections(provider);\
+        if (!connections || connections.length === 0) return { modelStr, health: 100 };\
+        let totalHealth = 0;\
+        for (const conn of connections) totalHealth += getAccountHealth(conn);\
+        return { modelStr, health: totalHealth \/ connections.length };\
+      } catch { return { modelStr, health: 100 }; }\
+    })\
+  );\
+  results.sort((a, b) => b.health - a.health);\
+  return results.map((e) => e.modelStr);\
+}\
+' "$COMBO"
+    sed -i '/Cost-optimized ordering: cheapest first/a\
+  } else if (strategy === "quota-aware") {\
+    orderedModels = await sortModelsByQuota(orderedModels);\
+    log.info("COMBO", `Quota-aware ordering: healthiest first (${orderedModels[0]})`);' "$COMBO"
+    echo "✅ quota-aware combo strategy applied"
+  else
+    echo "⏭️  quota-aware already enabled"
+  fi
+fi
+
 echo ""
 echo "=== Patch Summary ==="
 echo "1. max_tokens: Validates against negative values"
 echo "2. chatCore: 502 triggers token refresh for OAuth only"
 echo "3. antigravity: Auto-fetches projectId when missing"
+echo "4. combo: Quota-aware routing (healthiest account first)"
 echo ""
 echo "Done! Restart OmniRoute: sudo systemctl restart omniroute"
