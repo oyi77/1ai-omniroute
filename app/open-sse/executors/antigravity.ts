@@ -64,15 +64,16 @@ export class AntigravityExecutor extends BaseExecutor {
     if (!credentials.accessToken) return null;
 
     try {
-      const loadCodeAssistEndpoint = "https://cloudcode.googleapis.com/v1internal:loadCodeAssist";
+      const loadCodeAssistEndpoint = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
 
       const response = await fetch(loadCodeAssistEndpoint, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${credentials.accessToken}`,
           "Content-Type": "application/json",
-          "User-Agent": "antigravity/1.104.0 darwin/arm64",
+          "User-Agent": "google-api-nodejs-client/9.15.1",
           "X-Goog-Api-Client": "gl-js/(unknown)+gccl/(unknown)",
+          "Client-Metadata": '{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}',
         },
         body: JSON.stringify({
           metadata: {
@@ -89,10 +90,18 @@ export class AntigravityExecutor extends BaseExecutor {
       }
 
       const data = await response.json();
-      let projectId = data.cloudaicompanionProject;
       
+      // Extract project ID from response
+      let projectId = data.cloudaicompanionProject;
       if (typeof projectId === "object" && projectId !== null && projectId.id) {
         projectId = projectId.id;
+      }
+
+      // If userDefinedCloudaicompanionProject is true but no projectId, 
+      // user needs to provide their own GCP project
+      if (!projectId && data.allowedTiers?.[0]?.userDefinedCloudaicompanionProject) {
+        log?.warn?.("ANTIGRAVITY", "Account requires user-defined projectId - user needs to reconnect OAuth with GCP project");
+        return null;
       }
 
       if (projectId) {
