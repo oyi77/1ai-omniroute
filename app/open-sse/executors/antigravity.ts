@@ -65,16 +65,19 @@ export class AntigravityExecutor extends BaseExecutor {
 
     try {
       const loadCodeAssistEndpoint = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
+      const onboardUserEndpoint = "https://cloudcode-pa.googleapis.com/v1internal:onboardUser";
+      const headers = {
+        Authorization: `Bearer ${credentials.accessToken}`,
+        "Content-Type": "application/json",
+        "User-Agent": "google-api-nodejs-client/9.15.1",
+        "X-Goog-Api-Client": "gl-js/(unknown)+gccl/(unknown)",
+        "Client-Metadata": '{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}',
+      };
 
+      // Step 1: Call loadCodeAssist to check current state
       const response = await fetch(loadCodeAssistEndpoint, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${credentials.accessToken}`,
-          "Content-Type": "application/json",
-          "User-Agent": "google-api-nodejs-client/9.15.1",
-          "X-Goog-Api-Client": "gl-js/(unknown)+gccl/(unknown)",
-          "Client-Metadata": '{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}',
-        },
+        headers,
         body: JSON.stringify({
           metadata: {
             ideType: "IDE_UNSPECIFIED",
@@ -91,24 +94,92 @@ export class AntigravityExecutor extends BaseExecutor {
 
       const data = await response.json();
       
-      // Extract project ID from response
+      // Extract existing project ID if present
       let projectId = data.cloudaicompanionProject;
       if (typeof projectId === "object" && projectId !== null && projectId.id) {
         projectId = projectId.id;
       }
 
-      // If userDefinedCloudaicompanionProject is true but no projectId, 
-      // user needs to provide their own GCP project
-      if (!projectId && data.allowedTiers?.[0]?.userDefinedCloudaicompanionProject) {
-        log?.warn?.("ANTIGRAVITY", "Account requires user-defined projectId - user needs to reconnect OAuth with GCP project");
-        return null;
-      }
-
       if (projectId) {
-        log?.info?.("ANTIGRAVITY", `Fetched projectId dynamically: ${projectId}`);
+        log?.info?.("ANTIGRAVITY", `Found existing projectId: ${projectId}`);
         return projectId;
       }
 
+      // Step 2: No projectId found - try to auto-provision one via onboardUser
+      // This is needed because Google changed their API on Jan 15, 2026
+      // Accounts without valid projectId need to be onboarded
+      log?.info?.("ANTIGRAVITY", "No projectId found, attempting auto-provision via onboardUser...");
+      
+      const tierId = data.allowedTiers?.[0]?.id || "standard-tier";
+      const onboardResponse = await fetch(onboardUserEndpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          tierId,
+          metadata: {
+            ideType: "IDE_UNSPECIFIED",
+            platform: "PLATFORM_UNSPECIFIED",
+            pluginType: "GEMINI",
+          },
+        }),
+      });
+
+      if (!onboardResponse.ok) {
+        const errorText = await onboardResponse.text().catch(() => "");
+        log?.warn?.("ANTIGRAVITY", `onboardUser failed: ${onboardResponse.status} - ${errorText}`);
+        return null;
+      }
+
+      const onboardData = await onboardResponse.json();
+      
+      // Poll until onboarding completes (it's async)
+      for (let attempt = 0; attempt < 10; attempt++) {
+        if (onboardData.done) {
+          // Extract projectId from completed onboarding
+          let finalProjectId = onboardData.response?.cloudaicompanionProject;
+          if (typeof finalProjectId === "object" && finalProjectId?.id) {
+            finalProjectId = finalProjectId.id;
+          }
+          
+          if (finalProjectId) {
+            log?.info?.("ANTIGRAVITY", `Auto-provisioned projectId: ${finalProjectId}`);
+            return finalProjectId;
+          }
+        }
+        
+        // Check again after delay
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        const checkResponse = await fetch(onboardUserEndpoint, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            tierId,
+            metadata: {
+              ideType: "IDE_UNSPECIFIED",
+              platform: "PLATFORM_UNSPECIFIED",
+              pluginType: "GEMINI",
+            },
+            cloudaicompanionProject: onboardData.response?.cloudaicompanionProject || "",
+          }),
+        });
+
+        if (checkResponse.ok) {
+          const checkData = await checkResponse.json();
+          if (checkData.done) {
+            let finalProjectId = checkData.response?.cloudaicompanionProject;
+            if (typeof finalProjectId === "object" && finalProjectId?.id) {
+              finalProjectId = finalProjectId.id;
+            }
+            if (finalProjectId) {
+              log?.info?.("ANTIGRAVITY", `Auto-provisioned projectId: ${finalProjectId}`);
+              return finalProjectId;
+            }
+          }
+        }
+      }
+
+      log?.warn?.("ANTIGRAVITY", "Auto-provisioning timeout - user may need to reconnect OAuth");
       return null;
     } catch (error) {
       log?.warn?.("ANTIGRAVITY", `fetchProjectId error: ${error.message}`);
