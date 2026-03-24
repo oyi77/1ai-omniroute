@@ -93,11 +93,12 @@ with open(chatcore_path, "r") as f:
 fallback_code = '''    } else {
       // CLIProxyAPI Universal Fallback
       // When provider requests fail, retry through CLIProxyAPI at localhost:8317
-      // Supports: antigravity, claude, codex, gemini, deepseek, qwen, kimi, glm
+      // Supports: antigravity, claude, codex, gemini, deepseek, qwen, kimi, glm, nvidia, zhipu
       const CLI_PROXY_FALLBACK_ERRORS = [502, 401, 403, 410, 429, 500, 503, 504, 404];
       const PROVIDER_TO_OWNER = {
         antigravity: "antigravity", claude: "anthropic", codex: "openai", openai: "openai",
         gemini: "google", deepseek: "iflow", qwen: "iflow", kimi: "iflow", iflow: "iflow", glm: "iflow",
+        nvidia: "iflow", zhipu: "iflow",
       };
       const owner = PROVIDER_TO_OWNER[provider];
       if (owner && CLI_PROXY_FALLBACK_ERRORS.includes(statusCode)) {
@@ -107,12 +108,20 @@ fallback_code = '''    } else {
         else if (owner === "anthropic" && (!cliProxyModel || !cliProxyModel.startsWith("claude-"))) cliProxyModel = "claude-3-5-haiku-20241022";
         else if (owner === "openai" && (!cliProxyModel || !cliProxyModel.startsWith("gpt"))) cliProxyModel = "gpt-4o-mini";
         else if (owner === "google" && (!cliProxyModel || !cliProxyModel.startsWith("gemini-"))) cliProxyModel = "gemini-2.5-flash";
-        else if (owner === "iflow" && !cliProxyModel) {
-          if (provider === "deepseek") cliProxyModel = "deepseek-v3";
-          else if (provider === "qwen") cliProxyModel = "qwen3-max";
-          else if (provider === "kimi") cliProxyModel = "kimi-k2";
-          else if (provider === "glm") cliProxyModel = "glm-4.6";
-          else cliProxyModel = "deepseek-v3";
+        else if (owner === "iflow") {
+          if (!cliProxyModel || provider === "nvidia" || provider === "zhipu") {
+            if (provider === "deepseek") cliProxyModel = "deepseek-v3";
+            else if (provider === "qwen") cliProxyModel = "qwen3-max";
+            else if (provider === "kimi") cliProxyModel = "kimi-k2";
+            else if (provider === "glm" || provider === "zhipu") cliProxyModel = "glm-4.6";
+            else if (provider === "nvidia") {
+              const nm = (cliProxyModel || "").toLowerCase();
+              if (nm.includes("qwen")) cliProxyModel = "qwen3-max";
+              else if (nm.includes("kimi") || nm.includes("moonshot")) cliProxyModel = "kimi-k2";
+              else if (nm.includes("glm")) cliProxyModel = "glm-4.6";
+              else cliProxyModel = "deepseek-v3";
+            } else cliProxyModel = "deepseek-v3";
+          }
         }
         log?.info?.("CLIProxyAPI", `${provider} ${statusCode} — retrying via CLIProxyAPI/${owner} (${cliProxyModel})`);
         try {
