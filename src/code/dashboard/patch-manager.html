@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniRoute — Patch Manager</title>
+  <style>
+    :root {
+      --bg: #0f1117; --surface: #1a1d27; --surface2: #232735;
+      --border: #2d3148; --text: #e4e6f0; --text2: #8b8fa3;
+      --green: #22c55e; --red: #ef4444; --yellow: #f59e0b;
+      --blue: #3b82f6; --purple: #8b5cf6; --cyan: #06b6d4;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: 'SF Mono', 'Fira Code', monospace; background:var(--bg); color:var(--text); min-height:100vh; }
+    .container { max-width:1100px; margin:0 auto; padding:24px; }
+
+    /* Header */
+    .header { display:flex; align-items:center; justify-content:space-between; padding:20px 0; border-bottom:1px solid var(--border); margin-bottom:24px; }
+    .logo { display:flex; align-items:center; gap:12px; }
+    .logo-icon { width:40px; height:40px; background:linear-gradient(135deg,var(--purple),var(--blue)); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; }
+    .logo-text h1 { font-size:20px; font-weight:600; }
+    .logo-text .subtitle { font-size:12px; color:var(--text2); display:flex; align-items:center; gap:8px; }
+    .badge { padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; text-transform:uppercase; }
+    .badge-green { background:rgba(34,197,94,0.15); color:var(--green); }
+    .badge-yellow { background:rgba(245,158,11,0.15); color:var(--yellow); }
+    .badge-red { background:rgba(239,68,68,0.15); color:var(--red); }
+    .badge-blue { background:rgba(59,130,246,0.15); color:var(--blue); }
+    .badge-purple { background:rgba(139,92,246,0.15); color:var(--purple); }
+
+    /* Tab navigation */
+    .tabs { display:flex; gap:4px; margin-bottom:24px; border-bottom:1px solid var(--border); padding-bottom:12px; }
+    .tab { padding:8px 16px; background:none; border:none; color:var(--text2); cursor:pointer; font-family:inherit; font-size:13px; border-radius:8px 8px 0 0; transition:all 0.2s; }
+    .tab:hover { color:var(--text); background:var(--surface); }
+    .tab.active { color:var(--cyan); background:var(--surface); border-bottom:2px solid var(--cyan); }
+
+    /* Panels */
+    .panel { display:none; }
+    .panel.active { display:block; }
+
+    /* Cards */
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:16px; }
+    .card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+    .card-title { font-size:14px; font-weight:600; }
+    .card-desc { font-size:12px; color:var(--text2); margin-top:4px; }
+
+    /* Patch list */
+    .patch-item { display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--border); }
+    .patch-item:last-child { border-bottom:none; }
+    .patch-info { flex:1; }
+    .patch-name { font-size:13px; font-weight:500; }
+    .patch-meta { font-size:11px; color:var(--text2); margin-top:2px; }
+    .patch-actions { display:flex; gap:8px; align-items:center; }
+
+    /* Toggle switch */
+    .toggle { position:relative; width:44px; height:24px; background:var(--border); border-radius:12px; cursor:pointer; transition:background 0.2s; }
+    .toggle.on { background:var(--green); }
+    .toggle .thumb { position:absolute; top:2px; left:2px; width:20px; height:20px; background:white; border-radius:50%; transition:transform 0.2s; }
+    .toggle.on .thumb { transform:translateX(20px); }
+
+    /* Status indicator */
+    .status-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+    .status-dot.green { background:var(--green); box-shadow:0 0 6px var(--green); }
+    .status-dot.red { background:var(--red); }
+    .status-dot.yellow { background:var(--yellow); }
+
+    /* Buttons */
+    .btn { padding:8px 16px; border:none; border-radius:8px; font-family:inherit; font-size:12px; font-weight:500; cursor:pointer; transition:all 0.2s; }
+    .btn-primary { background:var(--blue); color:white; }
+    .btn-primary:hover { background:#2563eb; }
+    .btn-danger { background:var(--red); color:white; }
+    .btn-danger:hover { background:#dc2626; }
+    .btn-ghost { background:none; color:var(--text2); border:1px solid var(--border); }
+    .btn-ghost:hover { color:var(--text); border-color:var(--text2); }
+    .btn:disabled { opacity:0.5; cursor:not-allowed; }
+
+    /* Stats grid */
+    .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:20px; }
+    .stat { background:var(--surface2); padding:16px; border-radius:10px; text-align:center; }
+    .stat-value { font-size:24px; font-weight:700; }
+    .stat-label { font-size:11px; color:var(--text2); margin-top:4px; }
+
+    /* CLIProxyAPI panel */
+    .cli-header { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+    .cli-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
+
+    /* Loading spinner */
+    .spinner { width:16px; height:16px; border:2px solid var(--border); border-top-color:var(--cyan); border-radius:50%; animation:spin 0.6s linear infinite; display:inline-block; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    /* Toast */
+    .toast { position:fixed; bottom:24px; right:24px; padding:12px 20px; border-radius:10px; font-size:13px; z-index:1000; animation:slideIn 0.3s ease; }
+    .toast-success { background:var(--green); color:white; }
+    .toast-error { background:var(--red); color:white; }
+    @keyframes slideIn { from { transform:translateY(20px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">
+        <div class="logo-icon">⚡</div>
+        <div class="logo-text">
+          <h1>OmniRoute</h1>
+          <div class="subtitle">
+            <span id="version">v?.?.?</span>
+            <span id="patched-badge" class="badge badge-purple" style="display:none">Patched</span>
+            <span id="cli-badge" class="badge badge-green" style="display:none">CLIProxyAPI</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" onclick="refreshAll()">↻ Refresh</button>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('overview')">Overview</button>
+      <button class="tab" onclick="switchTab('patches')">Patches</button>
+      <button class="tab" onclick="switchTab('cliproxyapi')">CLIProxyAPI</button>
+    </div>
+
+    <!-- Overview Panel -->
+    <div id="panel-overview" class="panel active">
+      <div class="stats">
+        <div class="stat"><div class="stat-value" id="stat-patches">-</div><div class="stat-label">Active Patches</div></div>
+        <div class="stat"><div class="stat-value" id="stat-models">-</div><div class="stat-label">CLIProxyAPI Models</div></div>
+        <div class="stat"><div class="stat-value" id="stat-auth">-</div><div class="stat-label">Auth Accounts</div></div>
+        <div class="stat"><div class="stat-value" id="stat-version">-</div><div class="stat-label">CLIProxyAPI Ver</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">System Status</div><div class="card-desc">Current state of all components</div></div>
+        </div>
+        <div id="status-items"></div>
+      </div>
+    </div>
+
+    <!-- Patches Panel -->
+    <div id="panel-patches" class="panel">
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">Installed Patches</div><div class="card-desc">Toggle patches on/off. Changes require restart.</div></div>
+        </div>
+        <div id="patch-list"><div class="spinner"></div> Loading patches...</div>
+      </div>
+    </div>
+
+    <!-- CLIProxyAPI Panel -->
+    <div id="panel-cliproxyapi" class="panel">
+      <div class="card">
+        <div class="cli-header">
+          <div>
+            <div class="card-title">CLIProxyAPI Sidecar</div>
+            <div class="card-desc">OAuth proxy for Antigravity, Claude, Gemini CLI</div>
+          </div>
+          <span id="cli-status-badge" class="badge">Loading...</span>
+        </div>
+        <div class="stats">
+          <div class="stat"><div class="stat-value" id="cli-models">-</div><div class="stat-label">Models</div></div>
+          <div class="stat"><div class="stat-value" id="cli-auth-count">-</div><div class="stat-label">Auth Files</div></div>
+          <div class="stat"><div class="stat-value" id="cli-ver">-</div><div class="stat-label">Version</div></div>
+          <div class="stat"><div class="stat-value" id="cli-latest">-</div><div class="stat-label">Latest</div></div>
+        </div>
+        <div class="cli-actions">
+          <button class="btn btn-primary" onclick="cliAction('start')">▶ Start</button>
+          <button class="btn btn-danger" onclick="cliAction('stop')">■ Stop</button>
+          <button class="btn btn-ghost" onclick="cliAction('restart')">⟳ Restart</button>
+          <button class="btn btn-ghost" onclick="cliAction('enable')">✓ Enable Autostart</button>
+          <button class="btn btn-ghost" onclick="cliAction('disable')">✗ Disable Autostart</button>
+          <button class="btn btn-primary" onclick="cliSync()">↻ Sync Auth</button>
+          <button class="btn btn-primary" onclick="cliUpdate()">⬆ Update</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = window.location.origin;
+
+    function toast(msg, type='success') {
+      const el = document.createElement('div');
+      el.className = `toast toast-${type}`;
+      el.textContent = msg;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 3000);
+    }
+
+    async function api(path, method='GET', body=null) {
+      try {
+        const opts = { method, headers:{'Content-Type':'application/json'} };
+        if (body) opts.body = JSON.stringify(body);
+        const r = await fetch(API + path, opts);
+        return await r.json();
+      } catch(e) { return {error:e.message}; }
+    }
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('panel-'+name).classList.add('active');
+      if (name === 'patches') loadPatches();
+      if (name === 'cliproxyapi') loadCliProxy();
+    }
+
+    async function refreshAll() {
+      const data = await api('/api/openclaw/status');
+      if (data.error) { toast(data.error,'error'); return; }
+      document.getElementById('version').textContent = 'v' + data.version;
+      document.getElementById('patched-badge').style.display = data.patched ? 'inline' : 'none';
+      document.getElementById('cli-badge').style.display = data.cliproxyapi?.running ? 'inline' : 'none';
+      document.getElementById('stat-patches').textContent = data.patchCount || 0;
+      document.getElementById('stat-models').textContent = data.cliproxyapi?.modelCount || 0;
+      document.getElementById('stat-auth').textContent = data.cliproxyapi?.authCount || 0;
+      document.getElementById('stat-version').textContent = data.cliproxyapi?.version?.split(' ')[0] || '?';
+
+      const items = [];
+      items.push(statusRow('OmniRoute', 'v'+data.version, true));
+      items.push(statusRow('Patches', data.patchCount+' active', data.patched));
+      items.push(statusRow('CLIProxyAPI', data.cliproxyapi?.running?'Running':'Stopped', data.cliproxyapi?.running));
+      items.push(statusRow('CLIProxyAPI Version', data.cliproxyapi?.version||'unknown', true));
+      document.getElementById('status-items').innerHTML = items.join('');
+    }
+
+    function statusRow(label, value, ok) {
+      return `<div class="patch-item"><div class="patch-info"><div class="patch-name">${label}</div></div><div class="patch-actions"><span class="status-dot ${ok?'green':'red'}"></span><span style="font-size:12px;color:var(--text2)">${value}</span></div></div>`;
+    }
+
+    async function loadPatches() {
+      const data = await api('/api/openclaw/patches');
+      if (data.error) { document.getElementById('patch-list').textContent = data.error; return; }
+      document.getElementById('patch-list').innerHTML = data.patches.map(p => `
+        <div class="patch-item">
+          <div class="patch-info">
+            <div class="patch-name">${p.name}</div>
+            <div class="patch-meta">${p.description || 'No description'} · ${(p.size/1024).toFixed(1)}KB · ${new Date(p.modified).toLocaleDateString()}</div>
+          </div>
+          <div class="patch-actions">
+            <div class="toggle ${p.enabled?'on':''}" onclick="togglePatch('${p.name}',${!p.enabled})"><div class="thumb"></div></div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function togglePatch(name, enable) {
+      const data = await api('/api/openclaw/patches/toggle','POST',{name,enabled:enable});
+      if (data.error) { toast(data.error,'error'); return; }
+      toast(data.message);
+      loadPatches();
+      refreshAll();
+    }
+
+    async function loadCliProxy() {
+      const data = await api('/api/openclaw/cliproxyapi');
+      if (data.error) { toast(data.error,'error'); return; }
+      document.getElementById('cli-models').textContent = data.modelCount || 0;
+      document.getElementById('cli-auth-count').textContent = data.authCount || 0;
+      document.getElementById('cli-ver').textContent = data.version?.split(' ')[0] || '?';
+      document.getElementById('cli-latest').textContent = data.latestVersion || '?';
+      const badge = document.getElementById('cli-status-badge');
+      badge.textContent = data.running ? 'Running' : 'Stopped';
+      badge.className = 'badge ' + (data.running ? 'badge-green' : 'badge-red');
+    }
+
+    async function cliAction(action) {
+      const data = await api('/api/openclaw/cliproxyapi','POST',{action});
+      if (data.error) { toast(data.error,'error'); return; }
+      toast(`${action} successful`);
+      loadCliProxy();
+      refreshAll();
+    }
+
+    async function cliSync() {
+      toast('Syncing auth...');
+      const data = await api('/api/openclaw/cliproxyapi/sync','POST',{});
+      if (data.error) { toast(data.error,'error'); return; }
+      toast(data.message);
+      loadCliProxy();
+    }
+
+    async function cliUpdate() {
+      toast('Updating CLIProxyAPI...');
+      const data = await api('/api/openclaw/cliproxyapi/update','POST',{});
+      if (data.error) { toast(data.error,'error'); return; }
+      toast(data.message);
+      loadCliProxy();
+    }
+
+    // Auto-load on page open
+    refreshAll();
+  </script>
+</body>
+</html>

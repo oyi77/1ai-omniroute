@@ -59,7 +59,7 @@ async function refreshToken(connection) {
   try {
     const ANTIGRAVITY_CONFIG = {
       clientId: process.env.ANTIGRAVITY_CLIENT_ID || '773662819365-l7uir3lj1d8t1gk6c9j1k4kd8f4t8p4u.apps.googleusercontent.com',
-      clientSecret: process.env.ANTIGRAVITY_CLIENT_SECRET || 'GOCSPX-1234567890abcdefghijklmnop',
+      clientSecret: process.env.ANTIGRAVITY_CLIENT_SECRET || ''GOCSPX-PLACEHOLDER'',
       tokenUrl: 'https://oauth2.googleapis.com/token',
     };
     
