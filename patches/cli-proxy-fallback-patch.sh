@@ -91,43 +91,43 @@ with open(chatcore_path, "r") as f:
 # so if fallback succeeds, we skip the error return.
 
 fallback_code = '''    } else {
-      // CLIProxyAPI Fallback for Antigravity
-      // When antigravity requests fail (502/403/401/429/503), retry through
-      // CLIProxyAPI at localhost:8317. The original body is already in OpenAI
-      // format, so we send it directly to CLIProxyAPI /v1/chat/completions.
-      let cliProxyFallbackAttempted = false;
-      if (provider === "antigravity" && [502, 401, 403, 429, 503].includes(statusCode)) {
-        cliProxyFallbackAttempted = true;
+      // CLIProxyAPI Universal Fallback
+      // When provider requests fail, retry through CLIProxyAPI at localhost:8317
+      // Supports: antigravity, claude, codex, gemini, deepseek, qwen, kimi, glm
+      const CLI_PROXY_FALLBACK_ERRORS = [502, 401, 403, 410, 429, 500, 503, 504, 404];
+      const PROVIDER_TO_OWNER = {
+        antigravity: "antigravity", claude: "anthropic", codex: "openai", openai: "openai",
+        gemini: "google", deepseek: "iflow", qwen: "iflow", kimi: "iflow", iflow: "iflow", glm: "iflow",
+      };
+      const owner = PROVIDER_TO_OWNER[provider];
+      if (owner && CLI_PROXY_FALLBACK_ERRORS.includes(statusCode)) {
         const CLI_PROXY_API = process.env.CLIPROXYAPI_URL || "http://127.0.0.1:8317";
-        const cliProxyModel = model || requestedModel || "gemini-2.5-flash";
-        log?.info?.("CLIProxyAPI", `Antigravity ${statusCode} — retrying via CLIProxyAPI (${cliProxyModel})`);
+        let cliProxyModel = (model || requestedModel || "").replace(/^(antigravity|claude|codex|gemini|deepseek|qwen|kimi|iflow)\\//, "");
+        if (owner === "antigravity" && (!cliProxyModel || (!cliProxyModel.includes("gemini") && !cliProxyModel.includes("claude") && !cliProxyModel.includes("gpt")))) cliProxyModel = "gemini-3-flash";
+        else if (owner === "anthropic" && (!cliProxyModel || !cliProxyModel.startsWith("claude-"))) cliProxyModel = "claude-3-5-haiku-20241022";
+        else if (owner === "openai" && (!cliProxyModel || !cliProxyModel.startsWith("gpt"))) cliProxyModel = "gpt-4o-mini";
+        else if (owner === "google" && (!cliProxyModel || !cliProxyModel.startsWith("gemini-"))) cliProxyModel = "gemini-2.5-flash";
+        else if (owner === "iflow" && !cliProxyModel) {
+          if (provider === "deepseek") cliProxyModel = "deepseek-v3";
+          else if (provider === "qwen") cliProxyModel = "qwen3-max";
+          else if (provider === "kimi") cliProxyModel = "kimi-k2";
+          else if (provider === "glm") cliProxyModel = "glm-4.6";
+          else cliProxyModel = "deepseek-v3";
+        }
+        log?.info?.("CLIProxyAPI", `${provider} ${statusCode} — retrying via CLIProxyAPI/${owner} (${cliProxyModel})`);
         try {
-          const proxyHeaders = {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer omniroute-internal",
-          };
+          const proxyHeaders = { "Content-Type": "application/json", Authorization: "Bearer omniroute-internal" };
           const proxyBody = { ...body, model: cliProxyModel, stream: stream || false };
-          const proxyResponse = await fetch(`${CLI_PROXY_API}/v1/chat/completions`, {
-            method: "POST",
-            headers: proxyHeaders,
-            body: JSON.stringify(proxyBody),
-            signal: streamController.signal,
-          });
+          const proxyResponse = await fetch(`${CLI_PROXY_API}/v1/chat/completions`, { method: "POST", headers: proxyHeaders, body: JSON.stringify(proxyBody), signal: streamController.signal });
           if (proxyResponse.ok) {
             log?.info?.("CLIProxyAPI", `Fallback succeeded via CLIProxyAPI for ${cliProxyModel}`);
-            providerResponse = proxyResponse;
-            providerUrl = `${CLI_PROXY_API}/v1/chat/completions`;
-            providerHeaders = proxyHeaders;
+            providerResponse = proxyResponse; providerUrl = `${CLI_PROXY_API}/v1/chat/completions`; providerHeaders = proxyHeaders;
           } else {
             const proxyError = await proxyResponse.text().catch(() => "unknown");
             log?.warn?.("CLIProxyAPI", `Fallback failed (${proxyResponse.status}): ${proxyError}`);
           }
         } catch (proxyErr) {
-          if (proxyErr?.name === "AbortError") {
-            log?.warn?.("CLIProxyAPI", "Fallback request aborted");
-          } else {
-            log?.warn?.("CLIProxyAPI", `Fallback error: ${proxyErr?.message || proxyErr}`);
-          }
+          if (proxyErr?.name !== "AbortError") log?.warn?.("CLIProxyAPI", `Fallback error: ${proxyErr?.message || proxyErr}`);
         }
       }
 '''
