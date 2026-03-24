@@ -118,6 +118,7 @@
       <button class="tab active" onclick="switchTab('overview')">Overview</button>
       <button class="tab" onclick="switchTab('patches')">Patches</button>
       <button class="tab" onclick="switchTab('cliproxyapi')">CLIProxyAPI</button>
+      <button class="tab" onclick="switchTab('providers')">Providers</button>
     </div>
 
     <!-- Overview Panel -->
@@ -173,6 +174,17 @@
         </div>
       </div>
     </div>
+
+    <!-- Providers Panel -->
+    <div id="panel-providers" class="panel">
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">Unified Provider List</div><div class="card-desc">All providers from OmniRoute + CLIProxyAPI. Smart routing: when OmniRoute provider fails, CLIProxyAPI is used.</div></div>
+          <button class="btn btn-ghost" onclick="loadProviders()">↻ Refresh</button>
+        </div>
+        <div id="provider-list"><div class="spinner"></div> Loading providers...</div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -193,15 +205,6 @@
         const r = await fetch(API + path, opts);
         return await r.json();
       } catch(e) { return {error:e.message}; }
-    }
-
-    function switchTab(name) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-      event.target.classList.add('active');
-      document.getElementById('panel-'+name).classList.add('active');
-      if (name === 'patches') loadPatches();
-      if (name === 'cliproxyapi') loadCliProxy();
     }
 
     async function refreshAll() {
@@ -287,7 +290,43 @@
       loadCliProxy();
     }
 
-    // Auto-load on page open
+    async function loadProviders() {
+      const data = await api('/api/openclaw/providers');
+      if (data.error) { document.getElementById('provider-list').textContent = data.error; return; }
+      document.getElementById('provider-list').innerHTML = data.providers.map(p => {
+        const omniHealthy = p.healthy !== undefined ? p.healthy : true;
+        const cliModels = p.cliproxyapi?.models || [];
+        const sourceLabel = p.source === 'both' ? 'OmniRoute + CLIProxyAPI' :
+                           p.source === 'cliproxyapi' ? 'CLIProxyAPI only' : 'OmniRoute only';
+        const sourceBadge = p.source === 'both' ? 'badge-blue' :
+                           p.source === 'cliproxyapi' ? 'badge-purple' : 'badge-green';
+        return `<div class="patch-item">
+          <div class="patch-info">
+            <div class="patch-name">${p.provider} <span class="badge ${sourceBadge}" style="margin-left:8px">${sourceLabel}</span></div>
+            <div class="patch-meta">
+              ${p.active !== undefined ? `OmniRoute: ${p.active} active, ${p.errors} errors` : ''}
+              ${cliModels.length > 0 ? ` · CLIProxyAPI: ${cliModels.join(', ')}` : ''}
+              ${p.total !== undefined ? ` · ${p.total} total accounts` : ''}
+            </div>
+          </div>
+          <div class="patch-actions">
+            <span class="status-dot ${omniHealthy ? 'green' : 'red'}"></span>
+            <span style="font-size:11px;color:var(--text2)">${omniHealthy ? 'Healthy' : 'Unhealthy → using CLIProxyAPI'}</span>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('panel-'+name).classList.add('active');
+      if (name === 'patches') loadPatches();
+      if (name === 'cliproxyapi') loadCliProxy();
+      if (name === 'providers') loadProviders();
+    }
+
     refreshAll();
   </script>
 </body>

@@ -226,6 +226,89 @@ function handlePatchManagerRequest(req, res, body) {
     return true;
   }
 
+  // Combined providers list (OmniRoute + CLIProxyAPI)
+  if (url === '/api/openclaw/providers' && method === 'GET') {
+    try {
+      // Get OmniRoute providers from SQLite
+      const dbPath = path.join(os.homedir(), '.omniroute', 'storage.sqlite');
+      const result = execSync(
+        `sqlite3 "${dbPath}" "SELECT provider, COUNT(*) as total, SUM(CASE WHEN is_active=1 THEN 1 ELSE 0 END) as active, SUM(CASE WHEN error_code IS NOT NULL AND error_code != '' THEN 1 ELSE 0 END) as errors FROM provider_connections GROUP BY provider ORDER BY provider;"`,
+        { encoding: 'utf8', timeout: 5000 }
+      ).trim();
+
+      const omniroute = [];
+      for (const line of result.split('\n')) {
+        const [provider, total, active, errors] = line.split('|');
+        const t = parseInt(total), a = parseInt(active), e = parseInt(errors);
+        omniroute.push({
+          provider,
+          source: 'omniroute',
+          total: t,
+          active: a,
+          errors: e,
+          healthy: a > 0 && (e / Math.max(a, 1)) < 0.3,
+        });
+      }
+
+      // Get CLIProxyAPI models
+      let cliproxyapi = [];
+      try {
+        const resp = execSync(
+          `curl -s http://127.0.0.1:8317/v1/models -H "Authorization: Bearer omniroute-internal" 2>/dev/null`,
+          { encoding: 'utf8', timeout: 5000 }
+        );
+        const data = JSON.parse(resp);
+        const models = data.data || [];
+
+        // Group by provider
+        const providerMap = {};
+        for (const m of models) {
+          let prov = 'unknown';
+          if (m.id.startsWith('gemini-3.1') || m.id.startsWith('gemini-3-pro')) prov = 'antigravity';
+          else if (m.id.startsWith('claude-')) prov = 'claude';
+          else if (m.id.startsWith('gpt-')) prov = 'openai';
+          else if (m.id.startsWith('gemini-')) prov = 'gemini-cli';
+          if (!providerMap[prov]) providerMap[prov] = [];
+          providerMap[prov].push(m.id);
+        }
+        for (const [prov, mods] of Object.entries(providerMap)) {
+          cliproxyapi.push({
+            provider: prov,
+            source: 'cliproxyapi',
+            models: mods,
+            healthy: true,
+          });
+        }
+      } catch {}
+
+      // Merge: show unique providers from both sources
+      const merged = {};
+      for (const p of omniroute) {
+        merged[p.provider] = { ...p, cliproxyapi: null };
+      }
+      for (const p of cliproxyapi) {
+        if (merged[p.provider]) {
+          merged[p.provider].cliproxyapi = p;
+          merged[p.provider].source = 'both';
+        } else {
+          merged[p.provider] = { ...p, omniroute: null };
+        }
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        providers: Object.values(merged),
+        total: Object.keys(merged).length,
+        omnirouteCount: omniroute.length,
+        cliproxyapiCount: cliproxyapi.length,
+      }));
+    } catch (e) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return true;
+  }
+
   // Combined status
   if (url === '/api/openclaw/status' && method === 'GET') {
     const patches = discoverPatches();

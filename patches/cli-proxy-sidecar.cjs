@@ -1,18 +1,18 @@
 /**
- * CLIProxyAPI Sidecar Patch
- * =========================
- * Syncs CLIProxyAPI models on startup and periodically.
- * Actual routing happens through CLIProxyAPI at localhost:8317.
+ * CLIProxyAPI Sidecar — Sync & Discovery
+ * ========================================
+ * Discovers CLIProxyAPI models and syncs health status.
+ * Smart routing happens at the user/client level:
+ *   - OmniRoute (port 20128): nvidia, gemini, xai, pollinations, combos
+ *   - CLIProxyAPI (port 8317): gemini-3.1-pro, claude, antigravity Cloud Code
  *
- * Direct access: curl -X POST http://localhost:8317/v1/chat/completions \
- *   -H "Authorization: Bearer omniroute-internal" \
- *   -d '{"model":"gemini-3.1-pro-high","messages":[{"role":"user","content":"Hi"}]}'
+ * Use /api/openclaw/providers to see the unified list.
  */
 
 let cliproxyModels = new Set();
 let lastSync = 0;
 
-async function syncModels() {
+async function sync() {
   if (Date.now() - lastSync < 30_000) return;
   lastSync = Date.now();
   try {
@@ -23,14 +23,10 @@ async function syncModels() {
     if (r.ok) {
       const d = await r.json();
       cliproxyModels = new Set((d.data || []).map(m => m.id));
-      if (cliproxyModels.size > 0) {
-        const models = Array.from(cliproxyModels).join(", ");
-        console.log(`[cli-proxy] ${cliproxyModels.size} models available: ${models}`);
-      }
     }
   } catch {}
 }
 
-syncModels();
-setInterval(syncModels, 60_000);
+sync();
+setInterval(sync, 60_000);
 console.log("[cli-proxy] Sidecar sync loaded — CLIProxyAPI at localhost:8317");
