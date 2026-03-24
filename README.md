@@ -603,3 +603,27 @@ curl -X POST http://localhost:20128/v1/chat/completions \
 4. **Cache Responses** - Use response cache to reduce API calls
 5. **Fallback Strategy** - Have backup providers ready
 
+
+## 1ai Combo Models
+
+The following model combos are available for 1ai customers:
+
+### Premium Tier
+- **1ai/claude-premium** - Best Claude experience with multi-provider fallback
+- **1ai/gpt-premium** - Premium GPT-4o access with fallback
+- **1ai/coding-pro** - Optimized for coding tasks with extended context
+- **1ai/reasoning-pro** - For complex reasoning and analysis tasks
+- **1ai/vision-pro** - For image understanding and vision tasks
+
+### Standard Tier
+- **1ai/general-pro** - Best all-purpose models with automatic fallback
+- **1ai/fast-pro** - Fast responses with good quality
+
+### Budget Tier
+- **1ai/economy** - Cost-effective for everyday tasks
+- **1ai/ultra-fast** - Ultra fast responses for simple queries
+
+### Fallback Strategy
+All premium combos use fallback strategy with 84 Antigravity connections
+as primary, then Zai, Kiro, and other providers before falling back to
+direct Anthropic API.
