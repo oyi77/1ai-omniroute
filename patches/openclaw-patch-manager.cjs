@@ -83,7 +83,12 @@ function getCliProxyStatus() {
       try {
         const out = execSync(`"${CLI_BINARY}" --help 2>&1 | grep "CLIProxyAPI Version:"`, { encoding: 'utf8', timeout: 2000 }).trim();
         version = out.replace('CLIProxyAPI Version: ', '').split(',')[0];
-        if (version === 'dev' || !version) version = '3.0.0-code'; // User requested "code version"
+        
+        // Fetch the local git hash to show something more useful than "dev"
+        try {
+           const hash = execSync(`cd "${CLI_REPO}" && git rev-parse --short HEAD`, { encoding: 'utf8' }).trim();
+           version = `${version} (${hash})`;
+        } catch (e) {}
       } catch (e) {
         version = '3.0.0-code (fallback)';
       }
