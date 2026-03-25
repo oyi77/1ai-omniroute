@@ -150,10 +150,19 @@ function manageCliProxy(action) {
 function updateCliProxy() {
   try {
     if (!fs.existsSync(CLI_REPO)) return { error: 'CLIProxyAPI repo not found at ' + CLI_REPO };
-    execSync(`cd "${CLI_REPO}" && git pull --ff-only 2>&1`, { encoding: 'utf8', timeout: 60000 });
-    execSync(`cd "${CLI_REPO}" && go build -o cli-proxy-api ./cmd/server/ 2>&1`, { encoding: 'utf8', timeout: 120000 });
-    execSync('sudo systemctl restart cliproxyapi', { encoding: 'utf8' });
-    return { success: true, message: 'CLIProxyAPI updated and restarted', status: getCliProxyStatus() };
+    console.log(LOG_PREFIX, 'Updating CLIProxyAPI...');
+    execSync(`cd "${CLI_REPO}" && git fetch origin && git reset --hard origin/main`, { encoding: 'utf8', timeout: 60000 });
+    execSync(`cd "${CLI_REPO}" && go build -o cli-proxy-api ./cmd/server/`, { encoding: 'utf8', timeout: 180000 });
+    
+    // Clear old versions from PATH if necessary
+    try {
+      execSync('sudo systemctl restart cliproxyapi', { encoding: 'utf8' });
+    } catch (e) {
+      console.error(LOG_PREFIX, 'Failed to restart via systemctl, trying pkill...');
+      execSync('pkill cli-proxy-api || true', { encoding: 'utf8' });
+    }
+    
+    return { success: true, message: 'CLIProxyAPI forced update and rebuilt from source', status: getCliProxyStatus() };
   } catch (e) {
     return { error: e.message };
   }
@@ -216,7 +225,7 @@ function handlePatchManagerRequest(req, res, body) {
         // Fetch latest version from GitHub or remote
         let latestVersion = currentVersion;
         try {
-          const resp = execSync('curl -s https://api.github.com/repos/router-for-me/omniroute/releases/latest | grep tag_name | cut -d : -f 2,3 | tr -d \\\\" ,', { encoding: 'utf8', timeout: 5000 }).trim();
+          const resp = execSync('curl -s https://api.github.com/repos/diegosouzapw/OmniRoute/releases/latest | grep tag_name | cut -d : -f 2,3 | tr -d \\\\" ,', { encoding: 'utf8', timeout: 5000 }).trim();
           if (resp && resp !== 'null') latestVersion = resp.replace(/^v/, '');
         } catch {}
 
@@ -251,8 +260,8 @@ function handlePatchManagerRequest(req, res, body) {
         const repoPath = '/home/openclaw/omniroute-src';
         send("Initalizing update...", 5);
         
-        send("Pulling latest changes from main...", 20);
-        execSync(`cd ${repoPath} && git pull origin main`, { encoding: 'utf8' });
+        send("Pulling latest changes from main (forced)...", 20);
+        execSync(`cd ${repoPath} && git fetch origin && git reset --hard origin/main`, { encoding: 'utf8' });
         
         send("Installing dependencies (pnpm)...", 40);
         execSync(`cd ${repoPath} && pnpm install --frozen-lockfile`, { encoding: 'utf8' });
