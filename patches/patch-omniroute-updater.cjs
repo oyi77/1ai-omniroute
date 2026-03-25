@@ -14,33 +14,41 @@ module.exports = async function (omniroute) {
   
   let code = fs.readFileSync(filePath, 'utf8');
 
-  // Skip if already patched
-  if (code.includes('UpdateLogModal')) {
+  // Skip if already patched (check for state variables)
+  if (code.includes('updateModalOpen')) {
     omniroute.logger.info('[patch] patch-omniroute-updater: File already patched, skipping.');
     return;
   }
 
   // 1️⃣ Add import for the modal
-  const importRegex = /import\s+\{\s*Card,\s*Button\s*\}\s+from\s+"@\/shared\/components";/;
-  code = code.replace(importRegex, (match) => {
-    return `${match}\nimport UpdateLogModal from "@/shared/components/UpdateLogModal";`;
-  });
+  const importLine = 'import UpdateLogModal from "@/shared/components/UpdateLogModal";';
+  if (!code.includes(importLine)) {
+    const componentImport = 'import { Card, Button } from "@/shared/components";';
+    code = code.replace(componentImport, `${componentImport}\n${importLine}`);
+  }
 
   // 2️⃣ Add state variables for the modal inside the component
-  const componentStartRegex = /export\s+default\s+function\s+OmniRouteUpdater\(\)\s*\{/;
-  code = code.replace(componentStartRegex, (match) => {
-    return `${match}
+  const stateInsert = `
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
   const [updateLogs, setUpdateLogs] = useState<string[]>([]);
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);`;
-  });
+  
+  const componentStart = 'export default function OmniRouteUpdater() {';
+  code = code.replace(componentStart, `${componentStart}${stateInsert}`);
 
   // 3️⃣ Replace the performUpdate function
-  // We match the entire function from 'const performUpdate' to its closing brace
-  // This is safer than finding starts/ends manually
-  const performUpdateFullRegex = /const\s+performUpdate\s*=\s*async\s*\(\)\s*=>\s*\{[\s\S]*?async\s+loadStatus\(\);[\s\S]*?\}\s+finally\s*\{[\s\S]*?setUpdating\(false\);[\s\S]*?\};/;
+  const performUpdateStart = 'const performUpdate = async () => {';
+  const performUpdateEnd = '};';
   
-  const newPerformUpdate = `const performUpdate = async () => {
+  const startIdx = code.indexOf(performUpdateStart);
+  if (startIdx !== -1) {
+    // Find the NEXT closing brace that belongs to this function
+    // In the original file, it ends with setUpdating(false); \n };
+    const searchTarget = 'setUpdating(false);';
+    const endSearchIdx = code.indexOf(searchTarget, startIdx);
+    const finalEndIdx = code.indexOf(performUpdateEnd, endSearchIdx) + performUpdateEnd.length;
+    
+    const newPerformUpdate = `const performUpdate = async () => {
     setUpdateModalOpen(true);
     setUpdateLogs(["Starting update process..."]);
     setUpdateProgress(0);
@@ -68,7 +76,6 @@ module.exports = async function (omniroute) {
             if (data.progress !== undefined) setUpdateProgress(data.progress);
             if (data.error) throw new Error(data.error);
           } catch (e) {
-            // Might not be JSON
             setUpdateLogs(prev => [...prev, line]);
           }
         }
@@ -82,13 +89,18 @@ module.exports = async function (omniroute) {
       setUpdateProgress(null);
     }
   };`;
+    
+    code = code.slice(0, startIdx) + newPerformUpdate + code.slice(finalEndIdx);
+  }
 
-  code = code.replace(performUpdateFullRegex, newPerformUpdate);
-
-  // 4️⃣ Fix the JSX section to include the Modal and use better styling
-  // Match the entire return block
-  const returnBlockRegex = /return\s*\(\s*<Card[\s\S]*?<\/Card>\s*\);/;
-  const newReturn = `return (
+  // 4️⃣ Fix the JSX section to include the Modal
+  const returnStart = 'return (';
+  const returnEnd = '  );';
+  const returnIdx = code.lastIndexOf(returnStart);
+  const endIdx = code.lastIndexOf(returnEnd);
+  
+  if (returnIdx !== -1 && endIdx !== -1) {
+    const newReturn = `return (
       <>
         <Card className="p-0 overflow-hidden">
           <div className="p-6">
@@ -172,8 +184,8 @@ module.exports = async function (omniroute) {
         />
       </>
     );`;
-
-  code = code.replace(returnBlockRegex, newReturn);
+    code = code.slice(0, returnIdx) + newReturn + code.slice(endIdx + returnEnd.length);
+  }
 
   // Write the modified file back
   fs.writeFileSync(filePath, code, 'utf8');
