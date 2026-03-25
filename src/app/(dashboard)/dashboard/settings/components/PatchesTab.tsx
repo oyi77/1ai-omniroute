@@ -46,6 +46,40 @@ export default function PatchesTab() {
   const loadPatches = async () => {
     setLoading(true);
     try {
+      const response = await fetch("/api/patches/toggle");
+      if (response.ok) {
+        const data = await response.json();
+        const patchList: Patch[] = (data.patches || []).map((p: { name: string; enabled: boolean; loaded: boolean }) => ({
+          name: p.name,
+          description: PATCH_METADATA[p.name]?.description || "No description available",
+          enabled: p.enabled,
+          loaded: p.loaded,
+        }));
+        const knownPatches = Object.keys(PATCH_METADATA);
+        const apiPatchNames = new Set(patchList.map((p) => p.name));
+        for (const name of knownPatches) {
+          if (!apiPatchNames.has(name)) {
+            patchList.push({
+              name,
+              description: PATCH_METADATA[name]?.description || "No description available",
+              enabled: true,
+              loaded: false,
+            });
+          }
+        }
+        setPatches(patchList.sort((a, b) => a.name.localeCompare(b.name)));
+      } else {
+        const patchFiles = Object.keys(PATCH_METADATA);
+        const patchList: Patch[] = patchFiles.map((name) => ({
+          name,
+          description: PATCH_METADATA[name]?.description || "No description available",
+          enabled: true,
+          loaded: true,
+        }));
+        setPatches(patchList);
+      }
+    } catch (err) {
+      console.error("Failed to load patches:", err);
       const patchFiles = Object.keys(PATCH_METADATA);
       const patchList: Patch[] = patchFiles.map((name) => ({
         name,
@@ -54,9 +88,7 @@ export default function PatchesTab() {
         loaded: true,
       }));
       setPatches(patchList);
-    } catch (err) {
-      console.error("Failed to load patches:", err);
-      setStatusMessage({ type: "error", message: "Failed to load patches" });
+      setStatusMessage({ type: "error", message: "Failed to load patches from API, using defaults" });
     } finally {
       setLoading(false);
     }
@@ -107,6 +139,64 @@ export default function PatchesTab() {
       setStatusMessage({ type: "error", message: "Failed to reload patches" });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleEnableAll = async () => {
+    setApplyingPatch("__all__");
+    setStatusMessage(null);
+    try {
+      const response = await fetch("/api/patches/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enableAll: true }),
+      });
+
+      if (response.ok) {
+        setPatches((prev) => prev.map((p) => ({ ...p, enabled: true })));
+        setStatusMessage({
+          type: "success",
+          message: "All patches enabled. Restart required for changes to take effect.",
+        });
+      } else {
+        throw new Error("Failed to enable all patches");
+      }
+    } catch (err) {
+      setStatusMessage({
+        type: "error",
+        message: `Failed to enable all patches: ${(err as Error).message}`,
+      });
+    } finally {
+      setApplyingPatch(null);
+    }
+  };
+
+  const handleDisableAll = async () => {
+    setApplyingPatch("__all__");
+    setStatusMessage(null);
+    try {
+      const response = await fetch("/api/patches/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ disableAll: true }),
+      });
+
+      if (response.ok) {
+        setPatches((prev) => prev.map((p) => ({ ...p, enabled: false })));
+        setStatusMessage({
+          type: "success",
+          message: "All patches disabled. Restart required for changes to take effect.",
+        });
+      } else {
+        throw new Error("Failed to disable all patches");
+      }
+    } catch (err) {
+      setStatusMessage({
+        type: "error",
+        message: `Failed to disable all patches: ${(err as Error).message}`,
+      });
+    } finally {
+      setApplyingPatch(null);
     }
   };
 
@@ -170,7 +260,31 @@ export default function PatchesTab() {
           <span className="material-symbols-outlined text-[14px] mr-1" aria-hidden="true">
             refresh
           </span>
-          Reload Patches
+          Reload
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleEnableAll}
+          disabled={applyingPatch !== null || enabledCount === patches.length}
+          loading={applyingPatch === "__all__" && statusMessage?.type === "success"}
+        >
+          <span className="material-symbols-outlined text-[14px] mr-1" aria-hidden="true">
+            check_circle
+          </span>
+          Enable All
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDisableAll}
+          disabled={applyingPatch !== null || enabledCount === 0}
+          loading={applyingPatch === "__all__" && statusMessage?.type !== "success"}
+        >
+          <span className="material-symbols-outlined text-[14px] mr-1" aria-hidden="true">
+            cancel
+          </span>
+          Disable All
         </Button>
         <Button
           variant="outline"
@@ -182,7 +296,7 @@ export default function PatchesTab() {
           <span className="material-symbols-outlined text-[14px] mr-1" aria-hidden="true">
             open_in_new
           </span>
-          View on GitHub
+          GitHub
         </Button>
       </div>
 
