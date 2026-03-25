@@ -1,118 +1,99 @@
 // patches/patch-omniroute-updater.cjs
 // Replaces the native alert/confirm flow in OmniRouteUpdater with a modal.
+// VERSION: 2026.03.25.1 (Robust Regex Edition)
+
 module.exports = async function (omniroute) {
   const fs = omniroute.require('fs');
   const path = omniroute.require('path');
 
   const filePath = path.join(omniroute.process.cwd(), 'src/app/(dashboard)/dashboard/settings/components/OmniRouteUpdater.tsx');
+  if (!fs.existsSync(filePath)) {
+    omniroute.logger.error(`[patch] patch-omniroute-updater: File not found ${filePath}`);
+    return;
+  }
+  
   let code = fs.readFileSync(filePath, 'utf8');
 
-  // 1️⃣ Add import for the modal (after the existing imports)
-  const importLine = 'import UpdateLogModal from "@/shared/components/UpdateLogModal";';
-  if (!code.includes('UpdateLogModal from "@/shared/components/UpdateLogModal"')) {
-    // Insert after the last import line (simple heuristic)
-    const importInsertPos = code.indexOf('import { Card, Button } from "@/shared/components";');
-    if (importInsertPos > -1) {
-      const afterImport = code.indexOf('\n', importInsertPos) + 1;
-      code = code.slice(0, afterImport) + importLine + '\n' + code.slice(afterImport);
-    }
+  // Skip if already patched
+  if (code.includes('UpdateLogModal')) {
+    omniroute.logger.info('[patch] patch-omniroute-updater: File already patched, skipping.');
+    return;
   }
 
-  // 2️⃣ Add state variables for the modal (inside the function body)
-  const stateInsert = `
+  // 1️⃣ Add import for the modal
+  const importRegex = /import\s+\{\s*Card,\s*Button\s*\}\s+from\s+"@\/shared\/components";/;
+  code = code.replace(importRegex, (match) => {
+    return `${match}\nimport UpdateLogModal from "@/shared/components/UpdateLogModal";`;
+  });
+
+  // 2️⃣ Add state variables for the modal inside the component
+  const componentStartRegex = /export\s+default\s+function\s+OmniRouteUpdater\(\)\s*\{/;
+  code = code.replace(componentStartRegex, (match) => {
+    return `${match}
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
   const [updateLogs, setUpdateLogs] = useState<string[]>([]);
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);`;
-  const useEffectLine = 'useEffect(() => {';
-  const statePos = code.indexOf(useEffectLine);
-  if (statePos > -1 && !code.includes('updateModalOpen')) {
-    code = code.slice(0, statePos) + stateInsert + '\n' + code.slice(statePos);
-  }
+  });
 
-  // 3️⃣ Replace the performUpdate function with a modal‑based version
-  const performUpdateStart = 'const performUpdate = async () => {';
-  const performUpdateEnd = '};';
-  const performUpdatePos = code.indexOf(performUpdateStart);
-  if (performUpdatePos > -1) {
-    const endPos = code.indexOf(performUpdateEnd, performUpdatePos) + performUpdateEnd.length;
-    const newPerformUpdate = `
-    const performUpdate = async () => {
+  // 3️⃣ Replace the performUpdate function
+  // We match the entire function from 'const performUpdate' to its closing brace
+  // This is safer than finding starts/ends manually
+  const performUpdateFullRegex = /const\s+performUpdate\s*=\s*async\s*\(\)\s*=>\s*\{[\s\S]*?async\s+loadStatus\(\);[\s\S]*?\}\s+finally\s*\{[\s\S]*?setUpdating\(false\);[\s\S]*?\};/;
+  
+  const newPerformUpdate = `const performUpdate = async () => {
     setUpdateModalOpen(true);
     setUpdateLogs(["Starting update process..."]);
     setUpdateProgress(0);
     
     try {
-      setUpdateLogs([...updateLogs, "Checking for latest version..."]);
+      setUpdateLogs(prev => [...prev, "Checking GitHub repository..."]);
       setUpdateProgress(10);
       
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const res = await fetch("/api/openclaw/omniroute/update", { method: "POST" });
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("ReadableStream not supported");
+
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\\n").filter(l => l.trim());
+        
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line);
+            if (data.log) setUpdateLogs(prev => [...prev, data.log]);
+            if (data.progress !== undefined) setUpdateProgress(data.progress);
+            if (data.error) throw new Error(data.error);
+          } catch (e) {
+            // Might not be JSON
+            setUpdateLogs(prev => [...prev, line]);
+          }
+        }
+      }
       
-      setUpdateLogs([...updateLogs, "Latest version found: 3.0.0"]);
-      setUpdateProgress(20);
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setUpdateLogs([...updateLogs, "Downloading update package..."]);
-      setUpdateProgress(30);
-      
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      setUpdateLogs([...updateLogs, "Verifying package integrity..."]);
-      setUpdateProgress(40);
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setUpdateLogs([...updateLogs, "Extracting files..."]);
-      setUpdateProgress(50);
-      
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      setUpdateLogs([...updateLogs, "Applying database migrations..."]);
-      setUpdateProgress(60);
-      
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      setUpdateLogs([...updateLogs, "Updating dependencies..."]);
-      setUpdateProgress(70);
-      
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      setUpdateLogs([...updateLogs, "Building application..."]);
-      setUpdateProgress(80);
-      
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      setUpdateLogs([...updateLogs, "Cleaning up temporary files..."]);
-      setUpdateProgress(90);
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setUpdateLogs([...updateLogs, "Update completed successfully!"]);
+      setUpdateLogs(prev => [...prev, "Update completed successfully!"]);
       setUpdateProgress(100);
-      
-      // Reload status after update
-      await new Promise(resolve => setTimeout(resolve, 2000));
       loadStatus();
-    } catch (err) {
-      setUpdateLogs([...updateLogs, \`Error: \${err.message}\`]);
+    } catch (err: any) {
+      setUpdateLogs(prev => [...prev, \`Error: \${err.message}\`]);
+      setUpdateProgress(null);
     }
   };`;
-    code = code.slice(0, performUpdatePos) + newPerformUpdate + code.slice(endPos);
-  }
 
-  // 4️⃣ Replace the JSX return to render the modal at the end
-  const returnStart = '    return (';
-  const returnEnd = '    );';
-  const returnPos = code.indexOf(returnStart);
-  if (returnPos > -1) {
-    const endReturnPos = code.indexOf(returnEnd, returnPos) + returnEnd.length;
-    const newReturn = `
-    return (
+  code = code.replace(performUpdateFullRegex, newPerformUpdate);
+
+  // 4️⃣ Fix the JSX section to include the Modal and use better styling
+  // Match the entire return block
+  const returnBlockRegex = /return\s*\(\s*<Card[\s\S]*?<\/Card>\s*\);/;
+  const newReturn = `return (
       <>
         <Card className="p-0 overflow-hidden">
           <div className="p-6">
             <div className="flex items-center gap-2 mb-4">
-              <span className="material-symbols-outlined text-xl text-blue-500">cloud_sync</span>
+              <span className="material-symbols-outlined text-xl text-primary">cloud_sync</span>
               <h2 className="text-lg font-bold">OmniRoute Updater</h2>
             </div>
             
@@ -124,58 +105,58 @@ module.exports = async function (omniroute) {
             
             {status && (
               <>
-                <div className="flex items-center justify-between mb-4 p-3 bg-black/5 dark:bg-white/5 rounded-lg">
+                <div className="flex items-center justify-between mb-4 p-4 bg-bg-subtle border border-border rounded-xl">
                   <div>
-                    <p className="text-sm text-text-muted">Current Version</p>
-                    <p className="text-lg font-semibold">{status.current}</p>
+                    <p className="text-xs text-text-muted uppercase font-bold tracking-wider mb-1">Current Version</p>
+                    <p className="text-lg font-mono font-bold text-primary">{status.current}</p>
                     {status.latest && status.current !== status.latest && (
-                      <p className="text-xs text-emerald-400 mt-1">Latest: {status.latest}</p>
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-400 mt-2 bg-emerald-500/10 px-2 py-1 rounded-full border border-emerald-500/20 w-fit">
+                        <span className="material-symbols-outlined text-sm">auto_awesome</span>
+                        Latest: {status.latest}
+                      </div>
                     )}
                   </div>
                   <div className="flex gap-2">
                     <Button
                       size="sm"
                       variant={status.current !== status.latest ? "primary" : "secondary"}
-                      icon="update"
+                      icon="refresh"
                       onClick={checkUpdate}
                       disabled={checkingUpdate}
                     >
-                      {checkingUpdate ? "Checking..." : "Check Update"}
+                      {checkingUpdate ? "Checking..." : "Check"}
                     </Button>
                     <Button
                       size="sm"
                       variant="secondary"
-                      icon="refresh"
                       onClick={loadStatus}
                       disabled={updating}
                     >
-                      Refresh
+                      Reload
                     </Button>
                   </div>
                 </div>
                 
-                {status.current !== status.latest && (
-                  <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-                    <p className="text-sm text-emerald-400">
-                      Update available: {status.current} → {status.latest}
-                    </p>
-                  </div>
-                )}
-                
                 <div className="flex gap-3">
-                  {status.current !== status.latest && (
+                  {status.current !== status.latest ? (
                     <Button
                       variant="primary"
                       icon="upgrade"
                       onClick={performUpdate}
                       disabled={updating}
+                      fullWidth
                     >
-                      {updating ? "Updating..." : \`Update to {status.latest}\`}
+                      {updating ? "Updating..." : \`Upgrade to \${status.latest}\`}
                     </Button>
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-text-muted italic py-2">
+                      <span className="material-symbols-outlined text-emerald-500">check_circle</span>
+                      System is up to date
+                    </div>
                   )}
                 </div>
                 
-                {message && <p className="mt-3 text-sm text-text-muted">{message}</p>}
+                {message && <p className="mt-3 text-xs text-text-muted bg-black/20 p-2 rounded font-mono">{message}</p>}
               </>
             )}
           </div>
@@ -191,11 +172,11 @@ module.exports = async function (omniroute) {
         />
       </>
     );`;
-    code = code.slice(0, returnPos) + newReturn + code.slice(endReturnPos);
-  }
+
+  code = code.replace(returnBlockRegex, newReturn);
 
   // Write the modified file back
   fs.writeFileSync(filePath, code, 'utf8');
 
-  omniroute.logger.info('[patch] patch-omniroute-updater: Updated OmniRouteUpdater to use modal');
+  omniroute.logger.info('[patch] patch-omniroute-updater: OmniRouteUpdater modernized successfully.');
 };

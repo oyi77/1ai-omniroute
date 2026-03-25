@@ -81,8 +81,12 @@ function getCliProxyStatus() {
     let version = 'unknown';
     if (fs.existsSync(CLI_BINARY)) {
       try {
-        version = execSync(`"${CLI_BINARY}" --help 2>&1 | head -1`, { encoding: 'utf8' }).trim().replace('CLIProxyAPI Version: ', '');
-      } catch {}
+        const out = execSync(`"${CLI_BINARY}" --help 2>&1 | grep "CLIProxyAPI Version:"`, { encoding: 'utf8', timeout: 2000 }).trim();
+        version = out.replace('CLIProxyAPI Version: ', '').split(',')[0];
+        if (version === 'dev' || !version) version = '3.0.0-code'; // User requested "code version"
+      } catch (e) {
+        version = '3.0.0-code (fallback)';
+      }
     }
     let latestVersion = 'unknown';
     try {
@@ -197,6 +201,78 @@ function handlePatchManagerRequest(req, res, body) {
   if (url === '/api/openclaw/cliproxyapi' && method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(getCliProxyStatus()));
+    return true;
+  }
+
+  // OmniRoute Check Update
+  if (url === '/api/openclaw/omniroute/check-update' && method === 'GET') {
+    (async () => {
+      try {
+        const repoPath = '/home/openclaw/omniroute-src';
+        const currentVersion = (() => {
+          try { return JSON.parse(fs.readFileSync(path.join(repoPath, 'package.json'), 'utf8')).version; } catch { return '3.0.0'; }
+        })();
+        
+        // Fetch latest version from GitHub or remote
+        let latestVersion = currentVersion;
+        try {
+          const resp = execSync('curl -s https://api.github.com/repos/router-for-me/omniroute/releases/latest | grep tag_name | cut -d : -f 2,3 | tr -d \\\\" ,', { encoding: 'utf8', timeout: 5000 }).trim();
+          if (resp && resp !== 'null') latestVersion = resp.replace(/^v/, '');
+        } catch {}
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          current: currentVersion, 
+          latest: latestVersion, 
+          updateAvailable: currentVersion !== latestVersion 
+        }));
+      } catch (e) {
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    })();
+    return true;
+  }
+
+  // OmniRoute Perform Update (Streaming Logs)
+  if (url === '/api/openclaw/omniroute/update' && method === 'POST') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+
+    const send = (log, progress) => {
+      res.write(JSON.stringify({ log, progress }) + '\n');
+    };
+
+    (async () => {
+      try {
+        const repoPath = '/home/openclaw/omniroute-src';
+        send("Initalizing update...", 5);
+        
+        send("Pulling latest changes from main...", 20);
+        execSync(`cd ${repoPath} && git pull origin main`, { encoding: 'utf8' });
+        
+        send("Installing dependencies (pnpm)...", 40);
+        execSync(`cd ${repoPath} && pnpm install --frozen-lockfile`, { encoding: 'utf8' });
+        
+        send("Rebuilding application...", 70);
+        execSync(`cd ${repoPath} && pnpm build`, { encoding: 'utf8' });
+        
+        send("Update completed successfully! System will restart in few seconds.", 95);
+        send("Done", 100);
+        res.end();
+        
+        // Trigger restart
+        setTimeout(() => {
+          exec('pm2 restart omniroute || sudo systemctl restart omniroute');
+        }, 2000);
+      } catch (e) {
+        send(`Error: ${e.message}`, 0);
+        res.end();
+      }
+    })();
     return true;
   }
 
