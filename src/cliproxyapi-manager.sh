@@ -93,6 +93,8 @@ switch_version() {
 }
 
 update_latest() {
+  local force_yes="${1:-}"
+  
   cd "$CLI_PROXY_DIR"
   
   echo "Fetching latest changes..."
@@ -110,13 +112,18 @@ update_latest() {
   fi
   
   echo "Update available: $current -> $latest"
-  read -p "Proceed with update? (y/N) " -n 1 -r
-  echo
   
-  if [[ $REPLY =~ ^[Yy]$ ]]; then
+  if [[ "$force_yes" =~ ^(-y|--yes)$ ]]; then
+    echo "Auto-confirming update (-y flag)"
     switch_version "$latest"
   else
-    echo "Update cancelled"
+    read -p "Proceed with update? (y/N) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      switch_version "$latest"
+    else
+      echo "Update cancelled"
+    fi
   fi
 }
 
@@ -158,7 +165,7 @@ case "${1:-help}" in
     switch_version "$2"
     ;;
   update|upgrade)
-    update_latest
+    update_latest "$2"
     ;;
   status|st)
     status
