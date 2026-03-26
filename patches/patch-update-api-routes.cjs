@@ -416,7 +416,97 @@ export async function POST(request) {
   }
 
   // ============================================
-  // 4. Export UpdateLogModal from index
+  // 4. Fix OmniRoute check-update route (fallback to main if branch not on origin)
+  // ============================================
+  const omnirouteCheckUpdatePath = path.join(
+    cwd,
+    "src/app/api/openclaw/omniroute/check-update/route.ts",
+  );
+
+  if (fs.existsSync(omnirouteCheckUpdatePath)) {
+    const code = fs.readFileSync(omnirouteCheckUpdatePath, "utf8");
+
+    if (!code.includes("fallbackToMain") || !code.includes("origin/main")) {
+      const newCode = `import { NextResponse } from "next/server";
+import { execSync } from "child_process";
+
+const OMNI_ROUTE_DIR = "/home/openclaw/omniroute-src";
+
+export async function GET() {
+  try {
+    const currentCommit = execSync(\`cd \${OMNI_ROUTE_DIR} && git rev-parse --short HEAD\`, {
+      encoding: "utf8",
+    }).trim();
+    
+    const currentBranch = execSync(\`cd \${OMNI_ROUTE_DIR} && git branch --show-current\`, {
+      encoding: "utf8",
+    }).trim();
+    
+    execSync(\`cd \${OMNI_ROUTE_DIR} && git fetch origin\`, { encoding: "utf8" });
+    
+    // Try current branch first, fallback to main if not on origin
+    let latestCommit;
+    let effectiveBranch = currentBranch;
+    let fallbackToMain = false;
+    
+    try {
+      latestCommit = execSync(
+        \`cd \${OMNI_ROUTE_DIR} && git rev-parse --short origin/\${currentBranch}\`,
+        { encoding: "utf8" }
+      ).trim();
+    } catch {
+      // Branch doesn't exist on origin, fallback to main
+      fallbackToMain = true;
+      effectiveBranch = "main";
+      latestCommit = execSync(
+        \`cd \${OMNI_ROUTE_DIR} && git rev-parse --short origin/main\`,
+        { encoding: "utf8" }
+      ).trim();
+    }
+    
+    const updateAvailable = currentCommit !== latestCommit;
+    
+    let commitsBehind = 0;
+    if (updateAvailable) {
+      try {
+        const behind = execSync(
+          \`cd \${OMNI_ROUTE_DIR} && git rev-list --count HEAD..origin/\${effectiveBranch}\`,
+          { encoding: "utf8" }
+        ).trim();
+        commitsBehind = parseInt(behind, 10) || 0;
+      } catch {}
+    }
+    
+    return NextResponse.json({
+      current: currentCommit,
+      latest: latestCommit,
+      branch: currentBranch,
+      effectiveBranch,
+      fallbackToMain,
+      updateAvailable,
+      commitsBehind,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Failed to check updates", message: (error as Error).message },
+      { status: 500 }
+    );
+  }
+}
+`;
+      fs.writeFileSync(omnirouteCheckUpdatePath, newCode, "utf8");
+      omniroute.logger.info(
+        "[patch] patch-update-api-routes: OmniRoute check-update route patched (with branch fallback).",
+      );
+    } else {
+      omniroute.logger.info(
+        "[patch] patch-update-api-routes: OmniRoute check-update route already patched.",
+      );
+    }
+  }
+
+  // ============================================
+  // 5. Export UpdateLogModal from index
   // ============================================
   const indexPath = path.join(cwd, "src/shared/components/index.tsx");
   if (fs.existsSync(indexPath)) {
