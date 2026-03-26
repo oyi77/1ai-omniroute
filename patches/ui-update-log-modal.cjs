@@ -1,13 +1,37 @@
 // patches/ui-update-log-modal.cjs
 // Adds a reusable modal that shows update/log progress.
-module.exports = async function (omniroute) {
-  const fs = omniroute.require('fs');
-  const path = omniroute.require('path');
+// NOTE: This patch is a no-op if the component already exists in omniroute-src.
 
-  const componentPath = path.join(omniroute.process.cwd(), 'src/shared/components/UpdateLogModal.tsx');
+module.exports = async function (omniroute) {
+  const fs = omniroute.require("fs");
+  const path = omniroute.require("path");
+
+  const componentPath = path.join(
+    omniroute.process.cwd(),
+    "src/shared/components/UpdateLogModal.tsx",
+  );
+
+  // Skip if component already exists (from omniroute-src)
+  if (fs.existsSync(componentPath)) {
+    const existingCode = fs.readFileSync(componentPath, "utf8");
+    if (
+      existingCode.includes("UpdateLogModal") &&
+      existingCode.includes("isUpdating")
+    ) {
+      omniroute.logger.info(
+        "[patch] ui-update-log-modal: UpdateLogModal component already exists, skipping.",
+      );
+      return;
+    }
+  }
+
+  // Create the component if it doesn't exist
   const componentCode = `
-import { useState } from "react";
-import { Card, Button, Badge } from "@/shared/components";
+"use client";
+
+import { useEffect, useRef } from "react";
+import { cn } from "@/shared/utils/cn";
+import Button from "./Button";
 
 interface UpdateLogModalProps {
   isOpen: boolean;
@@ -15,7 +39,7 @@ interface UpdateLogModalProps {
   title: string;
   logs: string[];
   isUpdating: boolean;
-  progress?: number;
+  progress?: number | null;
 }
 
 export default function UpdateLogModal({
@@ -24,72 +48,108 @@ export default function UpdateLogModal({
   title,
   logs,
   isUpdating,
-  progress
+  progress,
 }: UpdateLogModalProps) {
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [logs]);
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <Card className="w-[500px] max-w-[90vw] p-6">
-        <div className="flex justify-between items-start mb-4">
-          <h2 className="text-xl font-semibold">{title}</h2>
-          <Button size="sm" variant="secondary" onClick={onClose}>
-            <span className="material-symbols-outlined">close</span>
-          </Button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={!isUpdating ? onClose : undefined}
+        aria-hidden="true"
+      />
+      <div className="relative w-full max-w-xl bg-surface border border-black/10 dark:border-white/10 rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between p-4 border-b border-black/5 dark:border-white/5">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 mr-2" aria-hidden="true">
+              <div className="w-2.5 h-2.5 rounded-full bg-[#FF5F56]" />
+              <div className="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]" />
+              <div className="w-2.5 h-2.5 rounded-full bg-[#27C93F]" />
+            </div>
+            <span className="material-symbols-outlined text-lg text-primary">
+              {isUpdating ? "sync" : "check_circle"}
+            </span>
+            <h2 className="text-base font-semibold text-text-main">{title}</h2>
+          </div>
         </div>
 
-        {progress !== undefined && (
-          <div className="mb-4">
-            <div className="w-full bg-gray-200 rounded-full h-2.5">
+        {progress !== null && progress !== undefined && (
+          <div className="px-4 pt-4">
+            <div className="w-full bg-bg-subtle rounded-full h-2">
               <div
-                className="bg-emerald-500 h-2.5 rounded-full transition-all"
-                style={{ width: \`\${progress}%\` }}
-              ></div>
+                className={cn(
+                  "h-2 rounded-full transition-all duration-500",
+                  progress >= 100 ? "bg-emerald-500" : "bg-primary"
+                )}
+                style={{ width: \`\${Math.min(100, Math.max(0, progress))}%\` }}
+              />
             </div>
-            <p className="text-center text-xs text-text-muted mt-1">
-              {progress}% Complete
-            </p>
+            <p className="text-xs text-text-muted text-right mt-1">{progress}%</p>
           </div>
         )}
 
-        <div className="max-h-[400px] overflow-y-auto bg-gray-50 p-4 rounded mb-4">
-          {logs.length > 0 ? (
-            logs.map((log, index) => (
-              <div key={index} className="mb-2 p-2 rounded bg-white/50">
-                <span className="text-xs font-mono text-text-muted">
-                  {new Date().toLocaleTimeString()}
-                </span>
-                <span className="ml-2">{log}</span>
-              </div>
-            ))
-          ) : (
-            <p className="text-text-muted text-center py-4">
-              No logs yet...
-            </p>
-          )}
+        <div className="p-4">
+          <div className="bg-bg-subtle rounded-lg p-3 max-h-[300px] overflow-y-auto font-mono text-xs">
+            {logs.length > 0 ? (
+              logs.map((log, index) => (
+                <div
+                  key={index}
+                  className={cn(
+                    "py-1 border-b border-black/5 dark:border-white/5 last:border-0",
+                    log.includes("ERROR") || log.includes("Error:")
+                      ? "text-red-400"
+                      : log.includes("✓") || log.includes("success")
+                        ? "text-emerald-400"
+                        : "text-text-muted"
+                  )}
+                >
+                  <span className="text-text-muted/50 mr-2">
+                    [{String(index + 1).padStart(2, "0")}]
+                  </span>
+                  {log}
+                </div>
+              ))
+            ) : (
+              <p className="text-text-muted text-center py-4">
+                {isUpdating ? "Starting update..." : "No logs yet"}
+              </p>
+            )}
+            <div ref={logsEndRef} />
+          </div>
         </div>
 
-        <div className="flex justify-end">
-          {!isUpdating && (
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={onClose}
-            >
-              Close
+        <div className="flex justify-end gap-2 p-4 border-t border-black/5 dark:border-white/5">
+          {isUpdating ? (
+            <Button size="sm" variant="secondary" onClick={onClose}>
+              Close (continues in background)
             </Button>
-          )}
-          {isUpdating && (
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={onClose}
-            >
-              Close (Update continues in background)
+          ) : (
+            <Button size="sm" variant="primary" onClick={onClose}>
+              Done
             </Button>
           )}
         </div>
-      </Card>
+      </div>
     </div>
   );
 }
@@ -101,8 +161,10 @@ export default function UpdateLogModal({
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  // Write the file (overwrite if it already exists)
-  fs.writeFileSync(componentPath, componentCode.trim(), 'utf8');
+  // Write the file
+  fs.writeFileSync(componentPath, componentCode.trim(), "utf8");
 
-  omniroute.logger.info('[patch] ui-update-log-modal: UpdateLogModal component installed');
+  omniroute.logger.info(
+    "[patch] ui-update-log-modal: UpdateLogModal component installed",
+  );
 };
