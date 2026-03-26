@@ -1,6 +1,6 @@
 // patches/ui-update-log-modal.cjs
-// Adds a reusable modal that shows update/log progress.
-// NOTE: This patch is a no-op if the component already exists in omniroute-src.
+// Creates UpdateLogModal.tsx component if it doesn't exist
+// This component is required by patch-omniroute-updater and patch-cliproxyapi-manager
 
 module.exports = async function (omniroute) {
   const fs = omniroute.require("fs");
@@ -11,7 +11,7 @@ module.exports = async function (omniroute) {
     "src/shared/components/UpdateLogModal.tsx",
   );
 
-  // Skip if component already exists (from omniroute-src)
+  // Check if component already exists and is valid
   if (fs.existsSync(componentPath)) {
     const existingCode = fs.readFileSync(componentPath, "utf8");
     if (
@@ -19,15 +19,13 @@ module.exports = async function (omniroute) {
       existingCode.includes("isUpdating")
     ) {
       omniroute.logger.info(
-        "[patch] ui-update-log-modal: UpdateLogModal component already exists, skipping.",
+        "[patch] ui-update-log-modal: UpdateLogModal already exists, skipping.",
       );
       return;
     }
   }
 
-  // Create the component if it doesn't exist
-  const componentCode = `
-"use client";
+  const componentCode = `"use client";
 
 import { useEffect, useRef } from "react";
 import { cn } from "@/shared/utils/cn";
@@ -155,16 +153,13 @@ export default function UpdateLogModal({
 }
 `;
 
-  // Ensure the directory exists
   const dir = path.dirname(componentPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  // Write the file
-  fs.writeFileSync(componentPath, componentCode.trim(), "utf8");
-
+  fs.writeFileSync(componentPath, componentCode, "utf8");
   omniroute.logger.info(
-    "[patch] ui-update-log-modal: UpdateLogModal component installed",
+    "[patch] ui-update-log-modal: UpdateLogModal component created.",
   );
 };
