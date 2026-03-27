@@ -132,11 +132,37 @@ fi
 log "Installing scripts..."
 
 if [ -d "${SOURCE_DIR}/scripts" ]; then
-    cp -v "${SOURCE_DIR}/scripts/"*.sh "${INSTALL_DIR}/" 2>/dev/null || warn "No scripts found"
+    cp -v "${SOURCE_DIR}/scripts/"*.sh "${INSTALL_DIR}/" 2>/dev/null || warn "No .sh scripts found"
+    cp -v "${SOURCE_DIR}/scripts/"*.js "${INSTALL_DIR}/" 2>/dev/null || true
     chmod +x "${INSTALL_DIR}/"*.sh 2>/dev/null || true
     success "Scripts installed to ${INSTALL_DIR}"
 else
     warn "No scripts directory found in source"
+fi
+
+# ─── Start Browser LLM Bridge via PM2 ───────────────────────────────────────
+
+BRIDGE_SERVER="${INSTALL_DIR}/bridge-server.js"
+if [ -f "${BRIDGE_SERVER}" ] && command -v pm2 &>/dev/null; then
+    log "Setting up Browser LLM Bridge (PM2)..."
+
+    # Find node binary
+    NODE_BIN="$(command -v node)"
+
+    if pm2 list 2>/dev/null | grep -q "browser-llm-bridge"; then
+        pm2 restart browser-llm-bridge 2>/dev/null || true
+        success "Browser LLM Bridge restarted (PM2)"
+    else
+        pm2 start "${BRIDGE_SERVER}" \
+            --name browser-llm-bridge \
+            --interpreter "${NODE_BIN}" \
+            2>/dev/null && success "Browser LLM Bridge started on port 20130" \
+            || warn "Failed to start Bridge via PM2 — start manually: pm2 start ${BRIDGE_SERVER} --name browser-llm-bridge"
+        pm2 save 2>/dev/null || true
+    fi
+else
+    [ ! -f "${BRIDGE_SERVER}" ] && warn "bridge-server.js not found — skipping PM2 setup"
+    ! command -v pm2 &>/dev/null && warn "PM2 not found — start bridge manually: node ${BRIDGE_SERVER}"
 fi
 
 # ─── Apply Provider Catalog Patch ───────────────────────────────────────────

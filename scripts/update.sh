@@ -131,14 +131,14 @@ else
   warn "No patches/ directory in repo"
 fi
 
-# Copy scripts too
+# Copy scripts (both .sh and .js)
 if [ -d "${REPO_DIR}/scripts" ]; then
-  for script in "${REPO_DIR}/scripts"/*.sh; do
+  for script in "${REPO_DIR}/scripts"/*.sh "${REPO_DIR}/scripts"/*.js; do
     [ -f "$script" ] || continue
     scriptname="$(basename "$script")"
     dest="${HOME}/.omniroute/${scriptname}"
     cp "$script" "$dest"
-    chmod +x "$dest"
+    chmod +x "$dest" 2>/dev/null || true
     log "  📜 Installed script: $scriptname"
   done
 fi
