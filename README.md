@@ -21,6 +21,31 @@ cd 1ai-omniroute
 ./install.sh
 ```
 
+## 🔄 Auto-Update
+
+1ai-omniroute supports automatic updates from the upstream OmniRoute repository:
+
+### From CLI
+```bash
+# Run auto-update
+~/.omniroute/omniroute-update.sh
+
+# Or use the script directly
+bash /home/openclaw/1ai-omniroute/src/auto-update.sh
+```
+
+### From UI
+Check for updates in the OmniRoute dashboard:
+```
+https://ai.aitradepulse.com/dashboard/settings
+```
+
+The auto-update will:
+1. Check for new commits in omniroute-src
+2. Backup database before updating
+3. Pull latest changes
+4. Rebuild and restart OmniRoute
+
 ## 🎛️ Patch Management UI
 
 After installation, manage patches from the OmniRoute dashboard:

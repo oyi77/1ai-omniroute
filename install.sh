@@ -213,7 +213,18 @@ echo "  🎬 /v1/sora, /v1/runway → /v1/videos/generations"
 echo "  👁️  /v1/vision, /v1/analyze → /v1/chat/completions"
 echo "  🎤 /v1/transcribe, /v1/tts → /v1/audio/*"
 echo ""
-echo "For updates: ~/.omniroute/omniroute-update.sh"
+# Run patch installation and UI sync
+if [ -f "${SOURCE_DIR}/scripts/install-patches.sh" ]; then
+    log "Running patch installation and UI sync..."
+    bash "${SOURCE_DIR}/scripts/install-patches.sh"
+    success "Patches installed and UI synced"
+fi
+
+echo ""
+echo "For updates:"
+echo "  • Auto-update: ~/.omniroute/omniroute-update.sh"
+echo "  • Check for updates via UI: https://ai.aitradepulse.com/dashboard/settings?tab=patches"
+echo ""
 echo "Documentation: https://github.com/oyi77/1ai-omniroute"
 echo ""
 
