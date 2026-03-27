@@ -91,19 +91,19 @@ function getCliProxyStatus() {
     let latestVersion = 'unknown';
     try {
       latestVersion = execSync('curl -s https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get(\'tag_name\',\'unknown\'))" 2>/dev/null', { encoding: 'utf8', timeout: 10000 }).trim();
-    } catch {}
+    } catch { }
 
     let modelCount = 0;
     try {
       const resp = execSync('curl -s http://127.0.0.1:8317/v1/models -H "Authorization: Bearer omniroute-internal" 2>/dev/null', { encoding: 'utf8', timeout: 5000 });
       const data = JSON.parse(resp);
       modelCount = (data.data || []).length;
-    } catch {}
+    } catch { }
 
     let authCount = 0;
     try {
       authCount = fs.readdirSync(AUTH_DIR).filter(f => f.endsWith('.json')).length;
-    } catch {}
+    } catch { }
 
     return {
       installed: fs.existsSync(CLI_BINARY),
@@ -212,19 +212,19 @@ function handlePatchManagerRequest(req, res, body) {
         const currentVersion = (() => {
           try { return JSON.parse(fs.readFileSync(path.join(repoPath, 'package.json'), 'utf8')).version; } catch { return '3.0.0'; }
         })();
-        
+
         // Fetch latest version from GitHub or remote
         let latestVersion = currentVersion;
         try {
           const resp = execSync('curl -s https://api.github.com/repos/router-for-me/omniroute/releases/latest | grep tag_name | cut -d : -f 2,3 | tr -d \\\\" ,', { encoding: 'utf8', timeout: 5000 }).trim();
           if (resp && resp !== 'null') latestVersion = resp.replace(/^v/, '');
-        } catch {}
+        } catch { }
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ 
-          current: currentVersion, 
-          latest: latestVersion, 
-          updateAvailable: currentVersion !== latestVersion 
+        res.end(JSON.stringify({
+          current: currentVersion,
+          latest: latestVersion,
+          updateAvailable: currentVersion !== latestVersion
         }));
       } catch (e) {
         res.writeHead(500);
@@ -250,20 +250,20 @@ function handlePatchManagerRequest(req, res, body) {
       try {
         const repoPath = '/home/openclaw/omniroute-src';
         send("Initalizing update...", 5);
-        
+
         send("Pulling latest changes from main...", 20);
         execSync(`cd ${repoPath} && git pull origin main`, { encoding: 'utf8' });
-        
+
         send("Installing dependencies (pnpm)...", 40);
         execSync(`cd ${repoPath} && pnpm install --frozen-lockfile`, { encoding: 'utf8' });
-        
+
         send("Rebuilding application...", 70);
         execSync(`cd ${repoPath} && pnpm build`, { encoding: 'utf8' });
-        
+
         send("Update completed successfully! System will restart in few seconds.", 95);
         send("Done", 100);
         res.end();
-        
+
         // Trigger restart
         setTimeout(() => {
           exec('pm2 restart omniroute || sudo systemctl restart omniroute');
@@ -355,7 +355,7 @@ function handlePatchManagerRequest(req, res, body) {
             healthy: true,
           });
         }
-      } catch {}
+      } catch { }
 
       // Merge: show unique providers from both sources
       const merged = {};
@@ -420,45 +420,31 @@ function handlePatchManagerRequest(req, res, body) {
   return false;
 }
 
-// ── HTTP server patch ────────────────────────────────────────────────────────
+// ── HTTP Middleware Registration ──────────────────────────────────────────────
 
-function patchHttpServer() {
-  try {
-    const httpMod = require('http');
-    const originalCreateServer = httpMod.createServer;
-
-    httpMod.createServer = function patchedCreateServer(options, listener) {
-      if (typeof options === 'function') {
-        listener = options;
-        options = {};
-      }
-
-      const patchedListener = function openclawPatchManagerListener(req, res) {
-        if (req.url && req.url.startsWith('/api/openclaw/')) {
-          if (req.method === 'GET') {
-            if (handlePatchManagerRequest(req, res, null)) return;
-          } else if (req.method === 'POST') {
-            let body = '';
-            req.on('data', chunk => { body += chunk; });
-            req.on('end', () => {
-              let parsed = {};
-              try { parsed = JSON.parse(body); } catch {}
-              if (handlePatchManagerRequest(req, res, parsed)) return;
-              listener.call(this, req, res);
-            });
-            return;
-          }
-        }
-        return listener.call(this, req, res);
-      };
-
-      return originalCreateServer.call(this, options, patchedListener);
-    };
-
-    console.log('[openclaw-patch-manager] HTTP server patched — /api/openclaw/* endpoints added');
-  } catch (e) {
-    console.error('[openclaw-patch-manager] Failed to patch HTTP server:', e.message);
+function patchManagerMiddleware(req, res, next) {
+  if (req.url && req.url.startsWith('/api/openclaw/')) {
+    if (req.method === 'GET') {
+      if (handlePatchManagerRequest(req, res, null)) return; // Handled, don't call next
+    } else if (req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        let parsed = {};
+        try { parsed = JSON.parse(body); } catch { }
+        if (handlePatchManagerRequest(req, res, parsed)) return; // Handled
+        next(); // Not handled, pass through
+      });
+      return; // Wait for body to finish
+    }
   }
+  next();
 }
 
-patchHttpServer();
+if (global.__patchHooks) {
+  // Priority 50 — run after URL rewriting but before generic middleware
+  global.__patchHooks.registerHttpMiddleware('patch-manager', patchManagerMiddleware, { priority: 50 });
+  console.log('[openclaw-patch-manager] ✅ Registered via patch-hooks — /api/openclaw/* endpoints active');
+} else {
+  console.error('[openclaw-patch-manager] ✖ patch-hooks not loaded — patch-manager will not work');
+}

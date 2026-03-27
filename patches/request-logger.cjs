@@ -37,7 +37,7 @@ class RequestLogger {
     this.config = { ...LOGGER_CONFIG, ...config };
     this.ensureLogDir();
   }
-  
+
   /**
    * Ensure log directory exists
    */
@@ -50,20 +50,20 @@ class RequestLogger {
       console.error('[request-logger] ✖ Failed to create log directory:', e.message);
     }
   }
-  
+
   /**
    * Get log file path
    */
   getLogPath(filename) {
     return path.join(this.config.logDir, filename);
   }
-  
+
   /**
    * Rotate log file if needed
    */
   rotateLog(filename) {
     const logPath = this.getLogPath(filename);
-    
+
     try {
       if (fs.existsSync(logPath)) {
         const stats = fs.statSync(logPath);
@@ -83,13 +83,13 @@ class RequestLogger {
       // Rotation failed, continue anyway
     }
   }
-  
+
   /**
    * Write log entry
    */
   writeLog(filename, entry) {
     const logPath = this.getLogPath(filename);
-    
+
     try {
       this.rotateLog(filename);
       fs.appendFileSync(logPath, JSON.stringify(entry) + '\n');
@@ -97,7 +97,7 @@ class RequestLogger {
       console.error(`[request-logger] ✖ Failed to write log: ${e.message}`);
     }
   }
-  
+
   /**
    * Sanitize headers (remove sensitive data)
    */
@@ -113,7 +113,7 @@ class RequestLogger {
     }
     return sanitized;
   }
-  
+
   /**
    * Log request
    */
@@ -127,10 +127,10 @@ class RequestLogger {
       headers: this.sanitizeHeaders(headers),
       body: this.config.logRequestBody ? body : undefined,
     };
-    
+
     this.writeLog(this.config.logFile, entry);
   }
-  
+
   /**
    * Log response
    */
@@ -144,15 +144,15 @@ class RequestLogger {
       headers: this.sanitizeHeaders(headers),
       body: this.config.logResponseBody ? body : undefined,
     };
-    
+
     this.writeLog(this.config.logFile, entry);
-    
+
     // Also log errors to error file
     if (statusCode >= 400) {
       this.writeLog(this.config.errorFile, entry);
     }
   }
-  
+
   /**
    * Log error
    */
@@ -165,7 +165,7 @@ class RequestLogger {
       stack: error.stack,
       context,
     };
-    
+
     this.writeLog(this.config.errorFile, entry);
   }
 }
@@ -175,58 +175,52 @@ class RequestLogger {
 const logger = new RequestLogger();
 
 /**
- * Patch fetch to log requests and responses
+ * Request logger fetch interceptor.
+ * Logs request metadata and response status to file.
  */
-function patchFetch() {
+async function requestLoggerInterceptor(url, options, next) {
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const urlString = typeof url === 'string' ? url : url?.url || '';
+  const method = options.method || 'GET';
+  const headers = options.headers || {};
+
+  // Log request
+  logger.logRequest(requestId, method, urlString, headers, options.body);
+
+  const startTime = Date.now();
+
   try {
-    const originalFetch = globalThis.fetch;
-    
-    globalThis.fetch = async function patchedFetch(url, options = {}) {
-      const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const urlString = typeof url === 'string' ? url : url?.url || '';
-      const method = options.method || 'GET';
-      const headers = options.headers || {};
-      
-      // Log request
-      logger.logRequest(requestId, method, urlString, headers, options.body);
-      
-      const startTime = Date.now();
-      
-      try {
-        const response = await originalFetch.call(this, url, options);
-        const latency = Date.now() - startTime;
-        
-        // Log response
-        logger.logResponse(
-          requestId, 
-          response.status, 
-          latency, 
-          Object.fromEntries(response.headers.entries()),
-          null // Don't log response body by default
-        );
-        
-        return response;
-      } catch (error) {
-        const latency = Date.now() - startTime;
-        logger.logError(requestId, error, { url: urlString, method });
-        throw error;
-      }
-    };
-    
-    console.log('[request-logger] ✅ Fetch patched for request logging');
-    
-    // Export for external access
-    global.requestLogger = logger;
-    
-  } catch (e) {
-    console.error('[request-logger] ✖ Failed to patch fetch:', e.message);
+    const response = await next(url, options);
+    const latency = Date.now() - startTime;
+
+    // Log response
+    logger.logResponse(
+      requestId,
+      response.status,
+      latency,
+      Object.fromEntries(response.headers.entries()),
+      null // Don't log response body by default
+    );
+
+    return response;
+  } catch (error) {
+    const latency = Date.now() - startTime;
+    logger.logError(requestId, error, { url: urlString, method });
+    throw error;
   }
 }
 
 // ─── Execution ───────────────────────────────────────────────────────────────
 
 function applyPatch() {
-  patchFetch();
+  if (global.__patchHooks) {
+    // Priority 20 — run early to capture all requests
+    global.__patchHooks.registerFetchInterceptor('request-logger', requestLoggerInterceptor, { priority: 20 });
+  } else {
+    console.error('[request-logger] ✖ patch-hooks not loaded — request-logger will not work');
+  }
+
+  global.requestLogger = logger;
   console.log('[request-logger] 🚀 Request logging active');
   console.log(`[request-logger] 📊 Log directory: ${LOGGER_CONFIG.logDir}`);
   console.log(`[request-logger] 📊 Request log: ${LOGGER_CONFIG.logFile}`);

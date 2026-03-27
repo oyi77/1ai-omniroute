@@ -38,7 +38,7 @@ class ProviderMonitor {
     this.healthStatus = new Map();
     this.requestHistory = [];
     this.startTime = Date.now();
-    
+
     // Start monitoring interval
     if (this.config.enabled) {
       this.monitorInterval = setInterval(() => {
@@ -46,13 +46,13 @@ class ProviderMonitor {
       }, this.config.checkInterval);
     }
   }
-  
+
   /**
    * Record a request
    */
   recordRequest(provider, success, duration, error = null) {
     if (!this.config.enabled) return;
-    
+
     const timestamp = Date.now();
     const entry = {
       provider,
@@ -61,10 +61,10 @@ class ProviderMonitor {
       error: error?.message || error,
       timestamp
     };
-    
+
     // Add to history
     this.requestHistory.push(entry);
-    
+
     // Update stats
     if (!this.stats.has(provider)) {
       this.stats.set(provider, {
@@ -79,13 +79,13 @@ class ProviderMonitor {
         successRate: 0
       });
     }
-    
+
     const stats = this.stats.get(provider);
     stats.totalRequests++;
     stats.totalDuration += duration;
     stats.avgDuration = stats.totalDuration / stats.totalRequests;
     stats.lastRequest = timestamp;
-    
+
     if (success) {
       stats.successfulRequests++;
       stats.lastSuccess = timestamp;
@@ -96,31 +96,31 @@ class ProviderMonitor {
         timestamp
       };
     }
-    
+
     stats.successRate = stats.successfulRequests / stats.totalRequests;
-    
+
     // Clean old history
     this.cleanOldHistory();
-    
+
     // Log significant events
     if (!success) {
       console.log(`[provider-monitor] ❌ ${provider} failed: ${error}`);
     }
-    
+
     // Update health status
     this.updateProviderHealth(provider);
   }
-  
+
   /**
    * Update provider health status
    */
   updateProviderHealth(provider) {
     const stats = this.stats.get(provider);
     if (!stats) return;
-    
+
     // Calculate health score (0-100)
     let healthScore = 100;
-    
+
     // Deduct for low success rate
     if (stats.successRate < 0.5) {
       healthScore -= 40;
@@ -129,50 +129,50 @@ class ProviderMonitor {
     } else if (stats.successRate < 0.9) {
       healthScore -= 10;
     }
-    
+
     // Deduct for slow responses
     if (stats.avgDuration > 10000) { // 10 seconds
       healthScore -= 20;
     } else if (stats.avgDuration > 5000) { // 5 seconds
       healthScore -= 10;
     }
-    
+
     // Deduct for recent failures
     const recentFailures = this.requestHistory
       .filter(r => r.provider === provider && !r.success && Date.now() - r.timestamp < 300000)
       .length;
-    
+
     if (recentFailures > 5) {
       healthScore -= 30;
     } else if (recentFailures > 2) {
       healthScore -= 15;
     }
-    
+
     // Ensure score is between 0 and 100
     healthScore = Math.max(0, Math.min(100, healthScore));
-    
+
     this.healthStatus.set(provider, {
       score: healthScore,
       status: healthScore >= 70 ? 'healthy' : healthScore >= 40 ? 'degraded' : 'unhealthy',
       lastUpdated: Date.now()
     });
-    
+
     // Auto-disable if below threshold
     if (stats.successRate < this.config.autoDisableThreshold && stats.totalRequests >= 10) {
       this.disableProvider(provider);
     }
   }
-  
+
   /**
    * Disable a provider
    */
   disableProvider(provider) {
     console.log(`[provider-monitor] ⚠️ Auto-disabling ${provider} (success rate: ${(this.stats.get(provider)?.successRate * 100).toFixed(1)}%)`);
-    
+
     // Note: In a real implementation, this would update the database
     // For now, we just log it
   }
-  
+
   /**
    * Update health status for all providers
    */
@@ -180,11 +180,11 @@ class ProviderMonitor {
     for (const provider of this.config.freeProviders) {
       this.updateProviderHealth(provider);
     }
-    
+
     // Log summary
     this.logSummary();
   }
-  
+
   /**
    * Clean old history entries
    */
@@ -192,23 +192,23 @@ class ProviderMonitor {
     const cutoff = Date.now() - this.config.statsRetention;
     this.requestHistory = this.requestHistory.filter(r => r.timestamp > cutoff);
   }
-  
+
   /**
    * Get provider statistics
    */
   getProviderStats(provider) {
     return this.stats.get(provider) || null;
   }
-  
+
   /**
    * Get all provider statistics
    */
   getAllStats() {
     const result = {};
-    
+
     for (const [provider, stats] of this.stats.entries()) {
       const health = this.healthStatus.get(provider) || { score: 0, status: 'unknown' };
-      
+
       result[provider] = {
         ...stats,
         healthScore: health.score,
@@ -217,39 +217,39 @@ class ProviderMonitor {
         avgDurationMs: Math.round(stats.avgDuration) + 'ms'
       };
     }
-    
+
     return result;
   }
-  
+
   /**
    * Get best provider
    */
   getBestProvider() {
     let bestProvider = null;
     let bestScore = -1;
-    
+
     for (const [provider, stats] of this.stats.entries()) {
       const health = this.healthStatus.get(provider) || { score: 0 };
-      
+
       // Calculate composite score
       const score = (stats.successRate * 0.6) + ((1 - Math.min(stats.avgDuration, 10000) / 10000) * 0.2) + (health.score / 100 * 0.2);
-      
+
       if (score > bestScore) {
         bestScore = score;
         bestProvider = provider;
       }
     }
-    
+
     return bestProvider;
   }
-  
+
   /**
    * Get recommendations
    */
   getRecommendations() {
     const recommendations = [];
     const stats = this.getAllStats();
-    
+
     // Find providers with low success rates
     for (const [provider, data] of Object.entries(stats)) {
       if (data.successRate < 0.5 && data.totalRequests >= 5) {
@@ -260,7 +260,7 @@ class ProviderMonitor {
           priority: 'high'
         });
       }
-      
+
       if (data.avgDuration > 8000) {
         recommendations.push({
           type: 'performance',
@@ -270,7 +270,7 @@ class ProviderMonitor {
         });
       }
     }
-    
+
     // Find best provider
     const bestProvider = this.getBestProvider();
     if (bestProvider) {
@@ -281,10 +281,10 @@ class ProviderMonitor {
         priority: 'low'
       });
     }
-    
+
     return recommendations;
   }
-  
+
   /**
    * Log summary
    */
@@ -293,14 +293,14 @@ class ProviderMonitor {
     const totalRequests = Object.values(stats).reduce((sum, s) => sum + s.totalRequests, 0);
     const totalSuccess = Object.values(stats).reduce((sum, s) => sum + s.successfulRequests, 0);
     const overallSuccessRate = totalRequests > 0 ? (totalSuccess / totalRequests * 100).toFixed(2) : 0;
-    
+
     console.log(`[provider-monitor] 📊 Summary: ${totalRequests} requests, ${overallSuccessRate}% success rate`);
-    
+
     // Log top 3 providers
     const sortedProviders = Object.entries(stats)
       .sort((a, b) => b[1].successRate - a[1].successRate)
       .slice(0, 3);
-    
+
     if (sortedProviders.length > 0) {
       console.log('[provider-monitor] 🏆 Top providers:');
       sortedProviders.forEach(([provider, data], index) => {
@@ -308,7 +308,7 @@ class ProviderMonitor {
       });
     }
   }
-  
+
   /**
    * Get uptime
    */
@@ -317,7 +317,7 @@ class ProviderMonitor {
     const seconds = Math.floor(uptime / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
-    
+
     return {
       milliseconds: uptime,
       seconds,
@@ -326,7 +326,7 @@ class ProviderMonitor {
       formatted: `${hours}h ${minutes % 60}m ${seconds % 60}s`
     };
   }
-  
+
   /**
    * Export data
    */
@@ -341,7 +341,7 @@ class ProviderMonitor {
       bestProvider: this.getBestProvider()
     };
   }
-  
+
   /**
    * Clear all data
    */
@@ -351,7 +351,7 @@ class ProviderMonitor {
     this.requestHistory = [];
     console.log('[provider-monitor] 🗑️ All data cleared');
   }
-  
+
   /**
    * Destroy monitor
    */
@@ -369,102 +369,74 @@ class ProviderMonitor {
 const providerMonitor = new ProviderMonitor();
 
 /**
- * Patch HTTP server to add provider monitoring
+ * Provider monitor middleware handler.
+ * Adds /api/provider-monitor/* endpoints and tracks API request success/failure.
+ * STREAMING-SAFE: Only hooks res.end, never buffers via res.write.
  */
-function patchHttpServer() {
-  try {
-    const http = require('http');
-    const originalCreateServer = http.createServer;
-    
-    http.createServer = function patchedCreateServer(options, listener) {
-      if (typeof options === 'function') {
-        listener = options;
-        options = {};
-      }
-      
-      const patchedListener = function patchedListener(req, res) {
-        // Add monitor endpoint
-        if (req.url === '/api/provider-monitor/stats' && req.method === 'GET') {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(providerMonitor.getAllStats(), null, 2));
-          return;
-        }
-        
-        if (req.url === '/api/provider-monitor/health' && req.method === 'GET') {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            uptime: providerMonitor.getUptime(),
-            bestProvider: providerMonitor.getBestProvider(),
-            recommendations: providerMonitor.getRecommendations()
-          }, null, 2));
-          return;
-        }
-        
-        // Track API requests
-        if (req.url.startsWith('/v1/') && req.method === 'POST') {
-          const startTime = Date.now();
-          
-          // Intercept response
-          const originalWrite = res.write;
-          const originalEnd = res.end;
-          let responseBody = '';
-          
-          res.write = function(chunk, encoding, callback) {
-            if (chunk) {
-              responseBody += chunk.toString();
-            }
-            return originalWrite.call(this, chunk, encoding, callback);
-          };
-          
-          res.end = function(chunk, encoding, callback) {
-            if (chunk) {
-              responseBody += chunk.toString();
-            }
-            
-            const duration = Date.now() - startTime;
-            const success = res.statusCode < 400;
-            const error = success ? null : responseBody;
-            
-            // Try to extract provider from response
-            let provider = 'unknown';
-            try {
-              const response = JSON.parse(responseBody);
-              if (response.model) {
-                // Extract provider from model name (e.g., "antigravity/claude-sonnet-4-6")
-                provider = response.model.split('/')[0];
-              }
-            } catch (e) {
-              // Can't parse response
-            }
-            
-            // Record request
-            providerMonitor.recordRequest(provider, success, duration, error);
-            
-            return originalEnd.call(this, chunk, encoding, callback);
-          };
-        }
-        
-        // Call original listener
-        return listener.call(this, req, res);
-      };
-      
-      return originalCreateServer.call(this, options, patchedListener);
-    };
-    
-    console.log('[provider-monitor] ✅ HTTP server patched for provider monitoring');
-    
-    // Export monitor for external access
-    global.providerMonitor = providerMonitor;
-    
-  } catch (e) {
-    console.error('[provider-monitor] ✖ Failed to patch HTTP server:', e.message);
+function providerMonitorMiddleware(req, res, next) {
+  // Stats endpoint
+  if (req.url === '/api/provider-monitor/stats' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(providerMonitor.getAllStats(), null, 2));
+    return;
   }
+
+  // Health endpoint
+  if (req.url === '/api/provider-monitor/health' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      uptime: providerMonitor.getUptime(),
+      bestProvider: providerMonitor.getBestProvider(),
+      recommendations: providerMonitor.getRecommendations()
+    }, null, 2));
+    return;
+  }
+
+  // Track API requests — hook only res.end for status code (streaming-safe, no body buffering)
+  if (req.url && req.url.startsWith('/v1/') && req.method === 'POST') {
+    const startTime = Date.now();
+    const originalEnd = res.end;
+
+    res.end = function (chunk, encoding, callback) {
+      const duration = Date.now() - startTime;
+      const success = res.statusCode < 400;
+
+      // Try to extract provider from the last chunk if it's JSON
+      let provider = 'unknown';
+      if (chunk) {
+        try {
+          const str = typeof chunk === 'string' ? chunk : chunk.toString();
+          const response = JSON.parse(str);
+          if (response.model) {
+            provider = response.model.split('/')[0];
+          }
+        } catch (e) {
+          // Can't parse — might be streaming, that's fine
+        }
+      }
+
+      providerMonitor.recordRequest(provider, success, duration, success ? null : `HTTP ${res.statusCode}`);
+
+      return originalEnd.call(this, chunk, encoding, callback);
+    };
+  }
+
+  next();
 }
 
 // ─── Execution ───────────────────────────────────────────────────────────────
 
 function applyPatch() {
-  patchHttpServer();
+  if (global.__patchHooks) {
+    // Priority 85 — run after most middleware
+    global.__patchHooks.registerHttpMiddleware('provider-monitor', providerMonitorMiddleware, { priority: 85 });
+  } else {
+    console.error('[provider-monitor] ✖ patch-hooks not loaded — provider-monitor will not work');
+  }
+
+  // Export monitor for external access
+  global.providerMonitor = providerMonitor;
+
   console.log('[provider-monitor] 🚀 Provider monitoring active');
   console.log(`[provider-monitor] 📊 Monitoring ${MONITOR_CONFIG.freeProviders.length} free providers`);
   console.log(`[provider-monitor] 📊 Check interval: ${MONITOR_CONFIG.checkInterval / 1000}s`);

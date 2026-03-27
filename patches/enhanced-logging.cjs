@@ -67,7 +67,7 @@ class EnhancedLogger {
       if (this.fs.existsSync(this.config.logFile)) {
         this.fs.renameSync(this.config.logFile, `${this.config.logFile}.1`);
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   logRequest(req, requestId) {
@@ -123,53 +123,44 @@ class EnhancedLogger {
 
 const enhancedLogger = new EnhancedLogger();
 
-function patchHttpServer() {
-  try {
-    const http = require('http');
-    const originalCreateServer = http.createServer;
+/**
+ * Enhanced logging middleware handler.
+ * Logs request metadata and response status/timing without touching body streams.
+ */
+function enhancedLoggingMiddleware(req, res, next) {
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  req.requestId = requestId;
 
-    http.createServer = function patchedCreateServer(options, listener) {
-      if (typeof options === 'function') { listener = options; options = {}; }
+  enhancedLogger.logRequest(req, requestId);
+  const startTime = Date.now();
 
-      const patchedListener = function patchedListener(req, res) {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        req.requestId = requestId;
+  // Hook res.end for status code + timing only — NO body buffering (streaming-safe)
+  const originalEnd = res.end;
+  res.end = function (chunk, encoding, callback) {
+    const duration = Date.now() - startTime;
+    const statusCode = res.statusCode;
 
-        enhancedLogger.logRequest(req, requestId);
-        const startTime = Date.now();
+    enhancedLogger.logResponse(req, res, requestId, duration, statusCode);
+    if (statusCode >= 400) {
+      enhancedLogger.logError(req, { message: `HTTP ${statusCode}` }, requestId);
+    }
 
-        // CRITICAL FIX: Only hook res.end for status code + timing, NO body buffering
-        const originalEnd = res.end;
-        res.end = function(chunk, encoding, callback) {
-          const duration = Date.now() - startTime;
-          const statusCode = res.statusCode;
+    return originalEnd.call(this, chunk, encoding, callback);
+  };
 
-          // Log just metadata — never touch body content for streaming safety
-          enhancedLogger.logResponse(req, res, requestId, duration, statusCode);
-          if (statusCode >= 400) {
-            enhancedLogger.logError(req, { message: `HTTP ${statusCode}` }, requestId);
-          }
-
-          return originalEnd.call(this, chunk, encoding, callback);
-        };
-
-        return listener.call(this, req, res);
-      };
-
-      return originalCreateServer.call(this, options, patchedListener);
-    };
-
-    console.log('[enhanced-logging] ✅ HTTP server patched (streaming-safe)');
-    global.enhancedLogger = enhancedLogger;
-
-    setInterval(() => enhancedLogger.logPerformance(), 5 * 60 * 1000);
-  } catch (e) {
-    console.error('[enhanced-logging] ✖ Failed to patch HTTP server:', e.message);
-  }
+  next();
 }
 
 function applyPatch() {
-  patchHttpServer();
+  if (global.__patchHooks) {
+    // Priority 5 — run very early to capture all request timing
+    global.__patchHooks.registerHttpMiddleware('enhanced-logging', enhancedLoggingMiddleware, { priority: 5 });
+  } else {
+    console.error('[enhanced-logging] ✖ patch-hooks not loaded — enhanced-logging will not work');
+  }
+
+  global.enhancedLogger = enhancedLogger;
+  setInterval(() => enhancedLogger.logPerformance(), 5 * 60 * 1000);
   console.log('[enhanced-logging] 🚀 Enhanced logging active (streaming-safe)');
 }
 

@@ -82,8 +82,8 @@ fi
 # Determine if we're running from cloned repo or downloading
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [ -f "${SCRIPT_DIR}/patches/antigravity-no-projectid.cjs" ]; then
-    # Running from cloned repo
+if ls "${SCRIPT_DIR}/patches/"*.cjs &>/dev/null 2>&1; then
+    # Running from cloned repo (any .cjs patch present)
     log "Installing from local repository..."
     SOURCE_DIR="${SCRIPT_DIR}"
 else
@@ -222,6 +222,8 @@ fi
 
 echo ""
 echo "For updates:"
+echo "  • Quick update: bash ~/.omniroute/update.sh"
+echo "  • Or from repo:  bash ~/1ai-omniroute/scripts/update.sh"
 echo "  • Auto-update: ~/.omniroute/omniroute-update.sh"
 echo "  • Check for updates via UI: https://ai.aitradepulse.com/dashboard/settings?tab=patches"
 echo ""

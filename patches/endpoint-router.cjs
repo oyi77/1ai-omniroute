@@ -36,7 +36,7 @@ const ENDPOINT_MAP = {
   '/v1/vary': '/v1/images/variations',
   '/v1/variation': '/v1/images/variations',
   '/v1/image-variation': '/v1/images/variations',
-  
+
   // Video generation aliases (t2v, i2v, f2v — all via /v1/videos/generations)
   '/v1/video': '/v1/videos/generations',
   '/v1/t2v': '/v1/videos/generations',
@@ -55,93 +55,71 @@ const ENDPOINT_MAP = {
   '/v1/hunyuan': '/v1/videos/generations',
   '/v1/veo': '/v1/videos/generations',
   '/v1/hailuo': '/v1/videos/generations',
-  
+
   // Vision/understanding aliases
   '/v1/vision': '/v1/chat/completions',
   '/v1/analyze': '/v1/chat/completions',
   '/v1/understand': '/v1/chat/completions',
   '/v1/describe': '/v1/chat/completions',
   '/v1/ocr': '/v1/chat/completions',
-  
+
   // Audio aliases
   '/v1/transcribe': '/v1/audio/transcriptions',
   '/v1/speech': '/v1/audio/speech',
   '/v1/tts': '/v1/audio/speech',
   '/v1/stt': '/v1/audio/transcriptions',
   '/v1/whisper': '/v1/audio/transcriptions',
-  
+
   // Embeddings aliases
   '/v1/embed': '/v1/embeddings',
   '/v1/vectorize': '/v1/embeddings',
-  
+
   // Reranking aliases
   '/v1/rank': '/v1/rerank',
   '/v1/reranker': '/v1/rerank',
-  
+
   // Moderation aliases
   '/v1/moderate': '/v1/moderations',
   '/v1/content-filter': '/v1/moderations',
-  
+
   // Music aliases
   '/v1/music': '/v1/music/generations',
   '/v1/audiogen': '/v1/music/generations',
 };
 
-// ─── Simple HTTP Interception ───────────────────────────────────────────────
+// ─── HTTP Middleware Registration ───────────────────────────────────────────
 
 /**
- * Patch HTTP server to redirect endpoint aliases
+ * Endpoint router middleware handler.
+ * Rewrites incoming URLs that match known aliases to their canonical paths.
  */
-function patchHttpServer() {
-  try {
-    const http = require('http');
-    const originalCreateServer = http.createServer;
-    
-    http.createServer = function patchedCreateServer(options, listener) {
-      // Handle both (listener) and (options, listener) signatures
-      if (typeof options === 'function') {
-        listener = options;
-        options = {};
-      }
-      
-      // Create patched listener that redirects URLs
-      const patchedListener = function patchedListener(req, res) {
-        const originalUrl = req.url;
-        
-        // Check if URL matches any alias
-        for (const [alias, target] of Object.entries(ENDPOINT_MAP)) {
-          if (originalUrl.startsWith(alias)) {
-            // Redirect the request
-            const newPath = originalUrl.replace(alias, target);
-            console.log(`[endpoint-router] Redirected: ${originalUrl} → ${newPath}`);
-            req.url = newPath;
-            break;
-          }
-        }
-        
-        // Call original listener
-        return listener.call(this, req, res);
-      };
-      
-      // Call original createServer with patched listener
-      return originalCreateServer.call(this, options, patchedListener);
-    };
-    
-    console.log('[endpoint-router] ✅ HTTP server patched for endpoint aliases');
-  } catch (e) {
-    console.error('[endpoint-router] ✖ Failed to patch HTTP server:', e.message);
+function endpointRouterMiddleware(req, res, next) {
+  const originalUrl = req.url;
+
+  // Check if URL matches any alias
+  for (const [alias, target] of Object.entries(ENDPOINT_MAP)) {
+    if (originalUrl.startsWith(alias)) {
+      const newPath = originalUrl.replace(alias, target);
+      console.log(`[endpoint-router] Redirected: ${originalUrl} → ${newPath}`);
+      req.url = newPath;
+      break;
+    }
   }
+
+  // Always pass to next middleware — this patch only rewrites, never terminates
+  next();
 }
 
-// ─── Module Export (for require-based patches) ──────────────────────────────
+// ─── Apply ──────────────────────────────────────────────────────────────────
 
-/**
- * Main patch function
- */
 function applyPatch() {
-  patchHttpServer();
+  if (global.__patchHooks) {
+    // Priority 10 — run early so URL is rewritten before other middleware sees it
+    global.__patchHooks.registerHttpMiddleware('endpoint-router', endpointRouterMiddleware, { priority: 10 });
+  } else {
+    console.error('[endpoint-router] ✖ patch-hooks not loaded — endpoint-router will not work');
+  }
   console.log('[endpoint-router] 🚀 Enhanced endpoint routing active');
 }
 
-// Apply patch immediately when module is loaded
 applyPatch();

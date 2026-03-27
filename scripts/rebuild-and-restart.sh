@@ -32,7 +32,19 @@ else
 fi
 
 log "Restarting PM2 service: $PM2_NAME"
-pm2 restart "$PM2_NAME"
+# Inject the patch hooks via NODE_OPTIONS --require
+# This ensures patches are loaded without modifying the source code.
+PATCH_HOOKS="/home/openclaw/.omniroute/patches/000-patch-hooks.cjs"
+
+if [ -f "$PATCH_HOOKS" ]; then
+  log "Injecting patch orchestrator into PM2..."
+  # Use pm2 set to persist the environment variable
+  pm2 set "env:NODE_OPTIONS" "--require $PATCH_HOOKS"
+  pm2 restart "$PM2_NAME" --update-env
+else
+  log "WARNING: Patch orchestrator not found at $PATCH_HOOKS"
+  pm2 restart "$PM2_NAME"
+fi
 
 log "Waiting for service to start..."
 sleep 5

@@ -41,43 +41,49 @@ function getModelMaxOutput(model) {
   return SAFE_MAX_TOKENS;
 }
 
-function patchFetch() {
-  if (!globalThis.fetch) return;
-  const origFetch = globalThis.fetch;
+/**
+ * Max-tokens guard fetch interceptor.
+ * Caps max_tokens to safe values per-model to prevent negative token errors.
+ */
+async function maxTokensGuardInterceptor(url, options, next) {
+  const urlStr = typeof url === 'string' ? url : (url?.url || String(url));
+  const isAnthropicCall = urlStr.includes('anthropic.com') || urlStr.includes('/v1/messages');
 
-  globalThis.fetch = async function(url, options = {}) {
-    const urlStr = typeof url === 'string' ? url : (url?.url || String(url));
-    const isAnthropicCall = urlStr.includes('anthropic.com') || urlStr.includes('/v1/messages');
+  if (isAnthropicCall && options.method === 'POST' && options.body) {
+    try {
+      let body = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
+      if (body && typeof body === 'object' && body.max_tokens !== undefined) {
+        const modelLimit = getModelMaxOutput(body.model);
+        const original = body.max_tokens;
 
-    if (isAnthropicCall && options.method === 'POST' && options.body) {
-      try {
-        let body = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
-        if (body && typeof body === 'object' && body.max_tokens !== undefined) {
-          const modelLimit = getModelMaxOutput(body.model);
-          const original = body.max_tokens;
+        const capped = Math.max(ABSOLUTE_MIN, Math.min(original, modelLimit));
 
-          // Cap to model limit, ensure >= 1
-          const capped = Math.max(ABSOLUTE_MIN, Math.min(original, modelLimit));
-
-          if (capped !== original) {
-            console.log(`[max-tokens-guard] ⚠️  Capped max_tokens: ${original} → ${capped} (model=${body.model})`);
-            body = { ...body, max_tokens: capped };
-            options = { ...options, body: JSON.stringify(body) };
-          }
+        if (capped !== original) {
+          console.log(`[max-tokens-guard] ⚠️  Capped max_tokens: ${original} → ${capped} (model=${body.model})`);
+          body = { ...body, max_tokens: capped };
+          options = { ...options, body: JSON.stringify(body) };
         }
-      } catch(e) {}
-    }
+      }
+    } catch (e) { }
+  }
 
-    return origFetch.call(this, url, options);
-  };
+  return next(url, options);
 }
 
+if (global.__patchHooks) {
+  // Priority 5 — run very early, before any other fetch interceptor
+  global.__patchHooks.registerFetchInterceptor('max-tokens-guard', maxTokensGuardInterceptor, { priority: 5 });
+} else {
+  console.error('[max-tokens-guard] ✖ patch-hooks not loaded — max-tokens-guard fetch interceptor will not work');
+}
+
+// Also patch https.request for direct HTTPS calls to Anthropic
 function patchHttps() {
   try {
     const https = require('https');
     const origRequest = https.request;
 
-    https.request = function(options, callback) {
+    https.request = function (options, callback) {
       const hostname = (typeof options === 'string' ? new URL(options).hostname : options?.hostname) || '';
       const path = (typeof options === 'string' ? new URL(options).pathname : options?.path) || '';
       const isAnthropic = hostname.includes('anthropic.com') || path.includes('/v1/messages');
@@ -91,12 +97,12 @@ function patchHttps() {
       let chunks = [];
       let done = false;
 
-      req.write = function(chunk, enc, cb) {
+      req.write = function (chunk, enc, cb) {
         if (!done) { chunks.push(typeof chunk === 'string' ? chunk : chunk.toString()); return req; }
         return origWrite(chunk, enc, cb);
       };
 
-      req.end = function(chunk, enc, cb) {
+      req.end = function (chunk, enc, cb) {
         if (!done) {
           done = true;
           if (chunk) chunks.push(typeof chunk === 'string' ? chunk : chunk.toString());
@@ -114,10 +120,10 @@ function patchHttps() {
                 try {
                   const newLen = Buffer.byteLength(bodyStr);
                   if (req.setHeader) req.setHeader('Content-Length', newLen);
-                } catch(e) {}
+                } catch (e) { }
               }
             }
-          } catch(e) {}
+          } catch (e) { }
           return origEnd(bodyStr, enc, cb);
         }
         return origEnd(chunk, enc, cb);
@@ -125,11 +131,10 @@ function patchHttps() {
 
       return req;
     };
-  } catch(e) {
+  } catch (e) {
     console.error('[max-tokens-guard] https patch failed:', e.message);
   }
 }
 
-patchFetch();
 patchHttps();
 console.log('[max-tokens-guard] ✅ Active — prevents negative max_tokens to Anthropic API');

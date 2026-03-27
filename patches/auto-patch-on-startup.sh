@@ -44,10 +44,16 @@ else
   log "SKIP: cli-proxy-fallback-patch.sh not found"
 fi
 
-# Step 2: Copy runtime patches (.cjs) to omniroute-src/patches/
+# Step 2: Copy runtime patches (.cjs) to omniroute-src/src/patches/
+if [ -d "$OMNI_SRC/src/patches" ]; then
+  cp "$PATCHES_DIR"/*.cjs "$OMNI_SRC/src/patches/" 2>/dev/null || true
+  log "Runtime patches synced to $OMNI_SRC/src/patches/"
+fi
+
+# Step 2b: Legacy sync (if patches dir exists in root)
 if [ -d "$OMNI_SRC/patches" ]; then
   cp "$PATCHES_DIR"/*.cjs "$OMNI_SRC/patches/" 2>/dev/null || true
-  log "Runtime patches synced to $OMNI_SRC/patches/"
+  log "Runtime patches synced to legacy $OMNI_SRC/patches/"
 fi
 
 # Step 3: Sync patches to homebrew installation if it exists

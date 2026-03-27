@@ -78,76 +78,75 @@ class ResponseCache {
 
 const responseCache = new ResponseCache();
 
-function patchFetch() {
-  try {
-    const originalFetch = globalThis.fetch;
+/**
+ * Response cache fetch interceptor.
+ * Caches non-streaming JSON responses. NEVER caches streaming/SSE.
+ */
+async function responseCacheInterceptor(url, options, next) {
+  const urlString = typeof url === 'string' ? url : url?.url || '';
+  const isCacheable = CACHE_CONFIG.cacheablePaths.some(path => urlString.includes(path));
 
-    globalThis.fetch = async function patchedFetch(url, options = {}) {
-      const urlString = typeof url === 'string' ? url : url?.url || '';
-      const isCacheable = CACHE_CONFIG.cacheablePaths.some(path => urlString.includes(path));
+  if (isCacheable && options.method === 'POST' && options.body) {
+    try {
+      let body;
+      try {
+        body = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
+      } catch (e) {
+        return next(url, options);
+      }
 
-      if (isCacheable && options.method === 'POST' && options.body) {
-        try {
-          let body;
+      // CRITICAL: Never cache streaming requests
+      if (body?.stream === true) {
+        return next(url, options);
+      }
+
+      const cacheKey = responseCache.generateKey(urlString, body);
+
+      const cachedResponse = responseCache.get(cacheKey);
+      if (cachedResponse) {
+        return new Response(JSON.stringify(cachedResponse), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', 'X-Cache': 'HIT' }
+        });
+      }
+
+      const response = await next(url, options);
+
+      // Only cache non-streaming JSON responses
+      if (response.ok) {
+        const contentType = response.headers.get('content-type') || '';
+        const isStreaming = contentType.includes('text/event-stream') ||
+          contentType.includes('text/stream');
+        if (!isStreaming) {
           try {
-            body = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
-          } catch (e) {
-            return originalFetch.call(this, url, options);
-          }
-
-          // CRITICAL FIX: Never cache streaming requests
-          if (body?.stream === true) {
-            return originalFetch.call(this, url, options);
-          }
-
-          const cacheKey = responseCache.generateKey(urlString, body);
-
-          const cachedResponse = responseCache.get(cacheKey);
-          if (cachedResponse) {
-            return new Response(JSON.stringify(cachedResponse), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json', 'X-Cache': 'HIT' }
-            });
-          }
-
-          const response = await originalFetch.call(this, url, options);
-
-          // CRITICAL FIX: Only cache non-streaming JSON responses
-          if (response.ok) {
-            const contentType = response.headers.get('content-type') || '';
-            const isStreaming = contentType.includes('text/event-stream') ||
-                                contentType.includes('text/stream');
-            if (!isStreaming) {
-              try {
-                const clonedResponse = response.clone();
-                const data = await clonedResponse.json();
-                if (data && data.choices && data.choices.length > 0) {
-                  responseCache.set(cacheKey, data);
-                }
-              } catch (e) {
-                // Not JSON or streaming, skip
-              }
+            const clonedResponse = response.clone();
+            const data = await clonedResponse.json();
+            if (data && data.choices && data.choices.length > 0) {
+              responseCache.set(cacheKey, data);
             }
+          } catch (e) {
+            // Not JSON or streaming, skip
           }
-
-          return response;
-        } catch (e) {
-          return originalFetch.call(this, url, options);
         }
       }
 
-      return originalFetch.call(this, url, options);
-    };
-
-    console.log('[response-cache] ✅ Fetch patched for response caching (streaming-safe)');
-    global.responseCache = responseCache;
-  } catch (e) {
-    console.error('[response-cache] ✖ Failed to patch fetch:', e.message);
+      return response;
+    } catch (e) {
+      return next(url, options);
+    }
   }
+
+  return next(url, options);
 }
 
 function applyPatch() {
-  patchFetch();
+  if (global.__patchHooks) {
+    // Priority 50 — run in the middle, after guards but before logging
+    global.__patchHooks.registerFetchInterceptor('response-cache', responseCacheInterceptor, { priority: 50 });
+  } else {
+    console.error('[response-cache] ✖ patch-hooks not loaded — response-cache will not work');
+  }
+  global.responseCache = responseCache;
   console.log('[response-cache] 🚀 Response caching active (streaming-safe)');
 }
 

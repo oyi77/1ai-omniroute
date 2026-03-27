@@ -16,23 +16,23 @@
 
 const CIRCUIT_BREAKER_CONFIG = {
   enabled: true,
-  
+
   // Circuit breaker settings
   failureThreshold: 5,        // Failures before opening circuit
   successThreshold: 2,        // Successes to close circuit from half-open
   resetTimeout: 30000,        // 30 seconds before testing recovery
   halfOpenMaxRequests: 3,     // Max requests in half-open state
-  
+
   // Retry settings
   maxRetries: 3,
   baseDelay: 1000,            // 1 second base delay
   maxDelay: 10000,            // 10 seconds max delay
   jitter: true,               // Add randomness to prevent thundering herd
-  
+
   // Health check settings
   healthCheckInterval: 60000, // 1 minute
   healthCheckTimeout: 5000,   // 5 seconds
-  
+
   // Free providers to monitor
   freeProviders: [
     'antigravity',
@@ -40,7 +40,7 @@ const CIRCUIT_BREAKER_CONFIG = {
     'openai-compatible-chat-f47261d3-39f5-4c2d-9e1d-057fe346b013', // Pollinations
     'openai-compatible-chat-cb6defca-c00f-466a-894c-ec1f45a03e53', // uncloseai
   ],
-  
+
   // Statistics retention
   statsRetention: 24 * 60 * 60 * 1000, // 24 hours
 };
@@ -65,7 +65,7 @@ class CircuitBreaker {
     this.lastFailureTime = null;
     this.halfOpenRequests = 0;
     this.nextAttempt = 0;
-    
+
     // Statistics
     this.stats = {
       totalRequests: 0,
@@ -79,7 +79,7 @@ class CircuitBreaker {
       lastFailure: null,
     };
   }
-  
+
   /**
    * Execute a function with circuit breaker protection
    */
@@ -90,77 +90,77 @@ class CircuitBreaker {
         // Circuit is open and not ready for recovery test
         throw new Error(`Circuit OPEN for ${this.provider}. Next attempt in ${Math.ceil((this.nextAttempt - Date.now()) / 1000)}s`);
       }
-      
+
       // Transition to half-open
       this.state = CircuitState.HALF_OPEN;
       this.halfOpenRequests = 0;
       console.log(`[circuit-breaker] ${this.provider}: OPEN → HALF_OPEN (testing recovery)`);
     }
-    
+
     // Check half-open request limit
     if (this.state === CircuitState.HALF_OPEN && this.halfOpenRequests >= this.config.halfOpenMaxRequests) {
       throw new Error(`Circuit HALF_OPEN for ${this.provider}. Max test requests reached.`);
     }
-    
+
     // Execute with retry logic
     const startTime = Date.now();
-    
+
     try {
       const result = await this.executeWithRetry(fn);
       const duration = Date.now() - startTime;
-      
+
       // Record success
       this.recordSuccess(duration);
-      
+
       return result;
     } catch (error) {
       const duration = Date.now() - startTime;
-      
+
       // Record failure
       this.recordFailure(duration, error);
-      
+
       throw error;
     }
   }
-  
+
   /**
    * Execute with exponential backoff retry
    */
   async executeWithRetry(fn) {
     let lastError;
-    
+
     for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
       try {
         return await fn();
       } catch (error) {
         lastError = error;
-        
+
         // Don't retry on last attempt
         if (attempt === this.config.maxRetries) {
           break;
         }
-        
+
         // Calculate delay with exponential backoff
         let delay = Math.min(
           this.config.baseDelay * Math.pow(2, attempt),
           this.config.maxDelay
         );
-        
+
         // Add jitter to prevent thundering herd
         if (this.config.jitter) {
           delay = delay * (0.5 + Math.random() * 0.5);
         }
-        
+
         console.log(`[circuit-breaker] ${this.provider}: Retry ${attempt + 1}/${this.config.maxRetries} in ${Math.round(delay)}ms`);
-        
+
         // Wait before retry
         await this.sleep(delay);
       }
     }
-    
+
     throw lastError;
   }
-  
+
   /**
    * Record successful request
    */
@@ -170,12 +170,12 @@ class CircuitBreaker {
     this.stats.lastRequest = Date.now();
     this.stats.lastSuccess = Date.now();
     this.stats.avgResponseTime = (this.stats.avgResponseTime * (this.stats.totalRequests - 1) + duration) / this.stats.totalRequests;
-    
+
     // Update circuit state
     if (this.state === CircuitState.HALF_OPEN) {
       this.successes++;
       this.halfOpenRequests++;
-      
+
       if (this.successes >= this.config.successThreshold) {
         // Close the circuit
         this.state = CircuitState.CLOSED;
@@ -189,7 +189,7 @@ class CircuitBreaker {
       this.failures = Math.max(0, this.failures - 1);
     }
   }
-  
+
   /**
    * Record failed request
    */
@@ -199,11 +199,11 @@ class CircuitBreaker {
     this.stats.lastRequest = Date.now();
     this.stats.lastFailure = Date.now();
     this.stats.avgResponseTime = (this.stats.avgResponseTime * (this.stats.totalRequests - 1) + duration) / this.stats.totalRequests;
-    
+
     // Update circuit state
     this.failures++;
     this.lastFailureTime = Date.now();
-    
+
     if (this.state === CircuitState.HALF_OPEN) {
       // Failure in half-open state opens the circuit immediately
       this.state = CircuitState.OPEN;
@@ -218,7 +218,7 @@ class CircuitBreaker {
       console.log(`[circuit-breaker] ${this.provider}: CLOSED → OPEN (${this.failures} failures)`);
     }
   }
-  
+
   /**
    * Get circuit status
    */
@@ -231,7 +231,7 @@ class CircuitBreaker {
       nextAttempt: this.state === CircuitState.OPEN ? new Date(this.nextAttempt).toISOString() : null,
       stats: {
         ...this.stats,
-        successRate: this.stats.totalRequests > 0 
+        successRate: this.stats.totalRequests > 0
           ? (this.stats.successfulRequests / this.stats.totalRequests * 100).toFixed(2) + '%'
           : '0%',
         avgResponseTimeMs: Math.round(this.stats.avgResponseTime) + 'ms',
@@ -243,7 +243,7 @@ class CircuitBreaker {
       }
     };
   }
-  
+
   /**
    * Reset circuit breaker
    */
@@ -255,7 +255,7 @@ class CircuitBreaker {
     this.nextAttempt = 0;
     console.log(`[circuit-breaker] ${this.provider}: Reset to CLOSED`);
   }
-  
+
   /**
    * Sleep utility
    */
@@ -271,14 +271,14 @@ class ProviderCircuitBreakerManager {
     this.config = { ...CIRCUIT_BREAKER_CONFIG, ...config };
     this.breakers = new Map();
     this.healthCheckInterval = null;
-    
+
     // Initialize circuit breakers for all free providers
     if (this.config.enabled) {
       this.initializeBreakers();
       this.startHealthChecks();
     }
   }
-  
+
   /**
    * Initialize circuit breakers for all configured providers
    */
@@ -286,10 +286,10 @@ class ProviderCircuitBreakerManager {
     for (const provider of this.config.freeProviders) {
       this.breakers.set(provider, new CircuitBreaker(provider, this.config));
     }
-    
+
     console.log(`[circuit-breaker] ✅ Initialized ${this.breakers.size} circuit breakers`);
   }
-  
+
   /**
    * Start health check interval
    */
@@ -297,26 +297,26 @@ class ProviderCircuitBreakerManager {
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval);
     }
-    
+
     this.healthCheckInterval = setInterval(() => {
       this.performHealthChecks();
     }, this.config.healthCheckInterval);
-    
+
     console.log(`[circuit-breaker] ✅ Health checks started (interval: ${this.config.healthCheckInterval / 1000}s)`);
   }
-  
+
   /**
    * Perform health checks on all providers
    */
   async performHealthChecks() {
     console.log(`[circuit-breaker] 🏥 Performing health checks...`);
-    
+
     for (const [provider, breaker] of this.breakers.entries()) {
       try {
         // Simple health check - try to make a minimal request
         // In production, this would be a dedicated health endpoint
         await this.checkProviderHealth(provider);
-        
+
         // If health check succeeds and circuit is open, move to half-open
         if (breaker.state === CircuitState.OPEN) {
           breaker.state = CircuitState.HALF_OPEN;
@@ -328,25 +328,37 @@ class ProviderCircuitBreakerManager {
       }
     }
   }
-  
+
   /**
-   * Check provider health
+   * Check provider health via real HTTP ping to OmniRoute models endpoint
    */
   async checkProviderHealth(provider) {
-    // This is a simplified health check
-    // In production, you would make an actual API call
     return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        // Simulate health check
-        if (Math.random() > 0.1) { // 90% success rate for simulation
-          resolve();
-        } else {
-          reject(new Error('Health check failed'));
-        }
-      }, 100);
+      try {
+        const http = require('http');
+        const req = http.request({
+          hostname: '127.0.0.1',
+          port: 20128,
+          path: '/v1/models',
+          method: 'GET',
+          timeout: this.config.healthCheckTimeout,
+        }, (res) => {
+          let data = '';
+          res.on('data', chunk => { data += chunk; });
+          res.on('end', () => {
+            if (res.statusCode < 400) resolve();
+            else reject(new Error(`HTTP ${res.statusCode}`));
+          });
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+        req.end();
+      } catch (e) {
+        reject(e);
+      }
     });
   }
-  
+
   /**
    * Get or create circuit breaker for provider
    */
@@ -354,10 +366,10 @@ class ProviderCircuitBreakerManager {
     if (!this.breakers.has(provider)) {
       this.breakers.set(provider, new CircuitBreaker(provider, this.config));
     }
-    
+
     return this.breakers.get(provider);
   }
-  
+
   /**
    * Execute request through circuit breaker
    */
@@ -365,17 +377,17 @@ class ProviderCircuitBreakerManager {
     const breaker = this.getBreaker(provider);
     return breaker.execute(fn);
   }
-  
+
   /**
    * Get status of all circuit breakers
    */
   getStatus() {
     const status = {};
-    
+
     for (const [provider, breaker] of this.breakers.entries()) {
       status[provider] = breaker.getStatus();
     }
-    
+
     return {
       enabled: this.config.enabled,
       totalBreakers: this.breakers.size,
@@ -383,7 +395,7 @@ class ProviderCircuitBreakerManager {
       summary: this.getSummary(),
     };
   }
-  
+
   /**
    * Get summary statistics
    */
@@ -393,16 +405,16 @@ class ProviderCircuitBreakerManager {
     let totalFailures = 0;
     let openCircuits = 0;
     let halfOpenCircuits = 0;
-    
+
     for (const breaker of this.breakers.values()) {
       totalRequests += breaker.stats.totalRequests;
       totalSuccess += breaker.stats.successfulRequests;
       totalFailures += breaker.stats.failedRequests;
-      
+
       if (breaker.state === CircuitState.OPEN) openCircuits++;
       if (breaker.state === CircuitState.HALF_OPEN) halfOpenCircuits++;
     }
-    
+
     return {
       totalRequests,
       successRate: totalRequests > 0 ? (totalSuccess / totalRequests * 100).toFixed(2) + '%' : '0%',
@@ -411,7 +423,7 @@ class ProviderCircuitBreakerManager {
       healthyCircuits: this.breakers.size - openCircuits - halfOpenCircuits,
     };
   }
-  
+
   /**
    * Reset all circuit breakers
    */
@@ -421,7 +433,7 @@ class ProviderCircuitBreakerManager {
     }
     console.log('[circuit-breaker] 🔄 All circuit breakers reset');
   }
-  
+
   /**
    * Reset specific provider
    */
@@ -432,7 +444,7 @@ class ProviderCircuitBreakerManager {
       console.log(`[circuit-breaker] 🔄 Reset circuit breaker for ${provider}`);
     }
   }
-  
+
   /**
    * Destroy manager
    */
@@ -451,125 +463,92 @@ class ProviderCircuitBreakerManager {
 const circuitBreakerManager = new ProviderCircuitBreakerManager();
 
 /**
- * Patch HTTP server to add circuit breaker monitoring
+ * Circuit breaker HTTP middleware.
+ * Adds /api/circuit-breaker/* endpoints, and tracks API request success/failure
+ * via res.end hook (no res.write buffering — streaming-safe).
  */
-function patchHttpServer() {
-  try {
-    const http = require('http');
-    const originalCreateServer = http.createServer;
-    
-    http.createServer = function patchedCreateServer(options, listener) {
-      if (typeof options === 'function') {
-        listener = options;
-        options = {};
-      }
-      
-      const patchedListener = function patchedListener(req, res) {
-        // Add circuit breaker status endpoint
-        if (req.url === '/api/circuit-breaker/status' && req.method === 'GET') {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(circuitBreakerManager.getStatus(), null, 2));
-          return;
-        }
-        
-        // Add circuit breaker reset endpoint
-        if (req.url === '/api/circuit-breaker/reset' && req.method === 'POST') {
-          let body = '';
-          req.on('data', chunk => {
-            body += chunk.toString();
-          });
-          
-          req.on('end', () => {
-            try {
-              const data = JSON.parse(body);
-              if (data.provider) {
-                circuitBreakerManager.resetProvider(data.provider);
-              } else {
-                circuitBreakerManager.resetAll();
-              }
-              
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ success: true, message: 'Circuit breaker reset' }));
-            } catch (e) {
-              res.writeHead(400, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Invalid JSON' }));
-            }
-          });
-          return;
-        }
-        
-        // Track API requests through circuit breaker
-        if (req.url.startsWith('/v1/') && req.method === 'POST') {
-          const startTime = Date.now();
-          
-          // Intercept response
-          const originalWrite = res.write;
-          const originalEnd = res.end;
-          let responseBody = '';
-          
-          res.write = function(chunk, encoding, callback) {
-            if (chunk) {
-              responseBody += chunk.toString();
-            }
-            return originalWrite.call(this, chunk, encoding, callback);
-          };
-          
-          res.end = function(chunk, encoding, callback) {
-            if (chunk) {
-              responseBody += chunk.toString();
-            }
-            
-            const duration = Date.now() - startTime;
-            const success = res.statusCode < 400;
-            const error = success ? null : responseBody;
-            
-            // Try to extract provider from response
-            let provider = 'unknown';
-            try {
-              const response = JSON.parse(responseBody);
-              if (response.model) {
-                // Extract provider from model name (e.g., "antigravity/claude-sonnet-4-6")
-                provider = response.model.split('/')[0];
-              }
-            } catch (e) {
-              // Can't parse response
-            }
-            
-            // Record in circuit breaker if we know the provider
-            if (provider !== 'unknown') {
-              const breaker = circuitBreakerManager.getBreaker(provider);
-              if (success) {
-                breaker.recordSuccess(duration);
-              } else {
-                breaker.recordFailure(duration, error);
-              }
-            }
-            
-            return originalEnd.call(this, chunk, encoding, callback);
-          };
-        }
-        
-        // Call original listener
-        return listener.call(this, req, res);
-      };
-      
-      return originalCreateServer.call(this, options, patchedListener);
-    };
-    
-    console.log('[circuit-breaker] ✅ HTTP server patched for circuit breaker monitoring');
-    
-    // Export manager for external access
-    global.circuitBreakerManager = circuitBreakerManager;
-    
-  } catch (e) {
-    console.error('[circuit-breaker] ✖ Failed to patch HTTP server:', e.message);
+function circuitBreakerMiddleware(req, res, next) {
+  // Status endpoint
+  if (req.url === '/api/circuit-breaker/status' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(circuitBreakerManager.getStatus(), null, 2));
+    return;
   }
+
+  // Reset endpoint
+  if (req.url === '/api/circuit-breaker/reset' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body);
+        if (data.provider) {
+          circuitBreakerManager.resetProvider(data.provider);
+        } else {
+          circuitBreakerManager.resetAll();
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: 'Circuit breaker reset' }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON' }));
+      }
+    });
+    return;
+  }
+
+  // Track API requests — hook only res.end for status code (streaming-safe, no body buffering)
+  if (req.url && req.url.startsWith('/v1/') && req.method === 'POST') {
+    const startTime = Date.now();
+    const originalEnd = res.end;
+
+    res.end = function (chunk, encoding, callback) {
+      const duration = Date.now() - startTime;
+      const success = res.statusCode < 400;
+
+      // Try to extract provider from the last chunk if it's JSON
+      let provider = 'unknown';
+      if (chunk) {
+        try {
+          const str = typeof chunk === 'string' ? chunk : chunk.toString();
+          const response = JSON.parse(str);
+          if (response.model) {
+            provider = response.model.split('/')[0];
+          }
+        } catch (e) {
+          // Can't parse, that's fine — might be streaming
+        }
+      }
+
+      if (provider !== 'unknown') {
+        const breaker = circuitBreakerManager.getBreaker(provider);
+        if (success) {
+          breaker.recordSuccess(duration);
+        } else {
+          breaker.recordFailure(duration, `HTTP ${res.statusCode}`);
+        }
+      }
+
+      return originalEnd.call(this, chunk, encoding, callback);
+    };
+  }
+
+  next();
 }
 
 // ─── Execution ───────────────────────────────────────────────────────────────
 
 function applyPatch() {
-  patchHttpServer();
+  if (global.__patchHooks) {
+    // Priority 80 — run after most middleware but before diagnostics
+    global.__patchHooks.registerHttpMiddleware('circuit-breaker', circuitBreakerMiddleware, { priority: 80 });
+  } else {
+    console.error('[circuit-breaker] ✖ patch-hooks not loaded — circuit-breaker will not work');
+  }
+
+  // Export manager for external access
+  global.circuitBreakerManager = circuitBreakerManager;
+
   console.log('[circuit-breaker] 🚀 Circuit breaker pattern active');
   console.log(`[circuit-breaker] 📊 Monitoring ${CIRCUIT_BREAKER_CONFIG.freeProviders.length} free providers`);
   console.log(`[circuit-breaker] 📊 Config: Threshold=${CIRCUIT_BREAKER_CONFIG.failureThreshold} failures, Reset=${CIRCUIT_BREAKER_CONFIG.resetTimeout / 1000}s`);
