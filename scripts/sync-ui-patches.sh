@@ -35,6 +35,15 @@ if [ -f "$SRC/app/(dashboard)/dashboard/settings/page.tsx" ]; then
   fi
 fi
 
+# Sync OmniRouteUpdater and CLIProxyAPIManager (from src root)
+for comp in OmniRouteUpdater CLIProxyAPIManager; do
+  if [ -f "$SRC/${comp}.tsx" ]; then
+    mkdir -p "$DEST/app/(dashboard)/dashboard/settings/components"
+    cp -f "$SRC/${comp}.tsx" "$DEST/app/(dashboard)/dashboard/settings/components/"
+    log "Synced ${comp}.tsx"
+  fi
+done
+
 # Copy wreq-js stub
 if [ -f "$SRC/../../patches/wreq-js.stub.ts" ]; then
   mkdir -p "$DEST/open-sse/utils"
