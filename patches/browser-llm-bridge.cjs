@@ -22,7 +22,7 @@ const { randomUUID } = require('crypto');
 
 const LOG = '[browser-llm-bridge]';
 const BRIDGE_PORT = 20130;
-const CDP_PORT = 18810;
+const CDP_PORT = 9222;
 
 // ── Singleton guard ──────────────────────────────────────────────────────────
 if (global.__browserLlmBridge) {
