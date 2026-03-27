@@ -1,0 +1,51 @@
+diff --git a/open-sse/utils/streamHelpers.ts b/open-sse/utils/streamHelpers.ts
+index 260cc93..909a91a 100644
+--- a/open-sse/utils/streamHelpers.ts
++++ b/open-sse/utils/streamHelpers.ts
+@@ -40,29 +40,27 @@ export function parseSSELine(line) {
+ export function hasValuableContent(chunk, format) {
+   // OpenAI format
+   if (format === FORMATS.OPENAI) {
+-    if (!chunk.choices?.[0]?.delta) return false;
+-    const delta = chunk.choices[0].delta;
+-    if (typeof delta.content === "string" && delta.content.length > 0) return true;
+-    if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0)
+-      return true;
+-    if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) return true;
+-    if (chunk.choices[0].finish_reason) return true;
+-    if (typeof delta.role === "string" && delta.role.length > 0) return true;
+-    return false;
++    const choice = chunk.choices?.[0];
++    if (!choice?.delta) return false;
++    const { delta } = choice;
++    return (
++      (typeof delta.content === "string" && delta.content.length > 0) ||
++      (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) ||
++      (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) ||
++      !!choice.finish_reason ||
++      (typeof delta.role === "string" && delta.role.length > 0)
++    );
+   }
+ 
+   // Claude format
+   if (format === FORMATS.CLAUDE) {
+-    const isContentBlockDelta = chunk.type === "content_block_delta";
+-    if (isContentBlockDelta) {
+-      const hasText = typeof chunk.delta?.text === "string" && chunk.delta.text.length > 0;
+-      const hasThinking =
+-        typeof chunk.delta?.thinking === "string" && chunk.delta.thinking.length > 0;
+-      const hasInputJson =
+-        typeof chunk.delta?.partial_json === "string" && chunk.delta.partial_json.length > 0;
+-      if (!hasText && !hasThinking && !hasInputJson) return false;
+-    }
+-    return true;
++    if (chunk.type !== "content_block_delta") return true;
++    const hasText = typeof chunk.delta?.text === "string" && chunk.delta.text.length > 0;
++    const hasThinking =
++      typeof chunk.delta?.thinking === "string" && chunk.delta.thinking.length > 0;
++    const hasInputJson =
++      typeof chunk.delta?.partial_json === "string" && chunk.delta.partial_json.length > 0;
++    return hasText || hasThinking || hasInputJson;
+   }
+ 
+   // Gemini format: filter chunks with no actual content parts

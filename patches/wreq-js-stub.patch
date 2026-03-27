@@ -1,0 +1,21 @@
+diff --git a/next.config.mjs b/next.config.mjs
+index b7f4645..086f28b 100644
+--- a/next.config.mjs
++++ b/next.config.mjs
+@@ -9,6 +9,8 @@ const nextConfig = {
+     resolveAlias: {
+       // Point mitm/manager to a stub during build (native child_process/fs can't be bundled)
+       "@/mitm/manager": "./src/mitm/manager.stub.ts",
++      "wreq-js": "./src/open-sse/utils/wreq-js.stub.ts",
++      "wreq-js": "./src/open-sse/utils/wreq-js.stub.ts",
+     },
+   },
+   output: "standalone",
+@@ -73,6 +75,7 @@ const nextConfig = {
+         "better-sqlite3",
+         "keytar",
+         "zod",
++        "wreq-js",
+         "pino",
+         "pino-pretty",
+         "child_process",
