@@ -8,6 +8,11 @@ An advanced patch for omniroute to make it spectacular — a collection of modul
 curl -fsSL https://raw.githubusercontent.com/oyi77/1ai-omniroute/main/install.sh | bash
 ```
 
+This will:
+1. Install all patches to `~/.omniroute/patches/`
+2. Sync UI patches to omniroute-src
+3. Build and restart OmniRoute automatically
+
 Or clone and install manually:
 
 ```bash
@@ -15,6 +20,42 @@ git clone https://github.com/oyi77/1ai-omniroute.git
 cd 1ai-omniroute
 ./install.sh
 ```
+
+## 🎛️ Patch Management UI
+
+After installation, manage patches from the OmniRoute dashboard:
+
+```bash
+# Access the patches UI
+https://ai.aitradepulse.com/dashboard/settings?tab=patches
+```
+
+Features:
+- **Enable/Disable** patches with one click
+- **Auto-rebuild** - toggling a patch automatically rebuilds and restarts OmniRoute
+- **View status** - see which patches are loaded
+
+### Available Patches
+
+| Patch | Description |
+|-------|-------------|
+| antigravity-no-projectid | Fixes "Missing Google projectId" error |
+| api-auth | API key authentication |
+| cost-tracker | Tracks API costs |
+| endpoint-router | Endpoint aliases (/v1/dalle, /v1/sora, etc.) |
+| enhanced-logging | Detailed request logging |
+| health-check | Provider health monitoring |
+| image-api-normalizer | Image API compatibility |
+| prometheus-metrics | Prometheus export |
+| prompt-cache-anthropic | Anthropic prompt caching |
+| prompt-cache-openai | OpenAI prompt caching |
+| provider-circuit-breaker | Circuit breaker pattern |
+| provider-monitor | Provider health tracking |
+| request-logger | Request logging |
+| response-cache | Response caching |
+| semantic-cache | Semantic similarity caching |
+| telegram-alerts | Telegram notifications |
+| video-api-normalizer | Video API compatibility |
 
 ## What is this?
 
@@ -54,6 +95,9 @@ cd 1ai-omniroute
 | Script | Description |
 |--------|-------------|
 | **install.sh** | One-line installer |
+| **scripts/install-patches.sh** | Installs all patches + syncs UI |
+| **scripts/sync-ui-patches.sh** | Syncs UI from 1ai-omniroute to omniroute-src |
+| **scripts/rebuild-and-restart.sh** | Rebuilds and restarts OmniRoute |
 | **patch-providers.sh** | Injects custom providers into compiled OmniRoute bundles |
 | **omniroute-update.sh** | Automated update workflow with patch reapplication |
 | **omniroute.service** | Systemd service with Antigravity OAuth secret |
