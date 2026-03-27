@@ -20,6 +20,8 @@ import BackgroundDegradationTab from "./components/BackgroundDegradationTab";
 import CacheStatsCard from "./components/CacheStatsCard";
 import ResilienceTab from "./components/ResilienceTab";
 import PatchesTab from "./components/PatchesTab";
+import OmniRouteUpdater from "./components/OmniRouteUpdater";
+import CLIProxyAPIManager from "./components/CLIProxyAPIManager";
 
 const tabs = [
   { id: "general", labelKey: "general", icon: "settings" },
@@ -27,7 +29,8 @@ const tabs = [
   { id: "security", labelKey: "security", icon: "shield" },
   { id: "routing", labelKey: "routing", icon: "route" },
   { id: "resilience", labelKey: "resilience", icon: "electrical_services" },
-  { id: "patches", labelKey: "patches", icon: "puzzle_extension" },
+  { id: "patches", labelKey: "patches", icon: "extension" },
+  { id: "updates", labelKey: "updates", icon: "system_update" },
   { id: "advanced", labelKey: "advanced", icon: "tune" },
 ];
 
@@ -106,6 +109,13 @@ export default function SettingsPage() {
           {activeTab === "resilience" && <ResilienceTab />}
 
           {activeTab === "patches" && <PatchesTab />}
+
+          {activeTab === "updates" && (
+            <div className="flex flex-col gap-6">
+              <OmniRouteUpdater />
+              <CLIProxyAPIManager />
+            </div>
+          )}
 
           {activeTab === "advanced" && <ProxyTab />}
         </div>

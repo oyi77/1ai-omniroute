@@ -18,21 +18,32 @@ if [ -d "$SRC/app/api/patches" ]; then
   log "Synced patches API routes"
 fi
 
-# Sync PatchesTab UI component
-if [ -f "$SRC/app/(dashboard)/dashboard/settings/components/PatchesTab.tsx" ]; then
-  mkdir -p "$DEST/app/(dashboard)/dashboard/settings/components"
-  cp -f "$SRC/app/(dashboard)/dashboard/settings/components/PatchesTab.tsx" \
-        "$DEST/app/(dashboard)/dashboard/settings/components/"
-  log "Synced PatchesTab.tsx"
+# Sync settings page with Patches, Updates tabs
+if [ -f "$SRC/app/(dashboard)/dashboard/settings/page.tsx" ]; then
+  cp -f "$SRC/app/(dashboard)/dashboard/settings/page.tsx" \
+        "$DEST/app/(dashboard)/dashboard/settings/"
+  log "Synced settings page with patches and updates tabs"
 fi
 
-# Sync settings page if it has patches tab
-if [ -f "$SRC/app/(dashboard)/dashboard/settings/page.tsx" ]; then
-  if grep -q "PatchesTab" "$SRC/app/(dashboard)/dashboard/settings/page.tsx"; then
-    cp -f "$SRC/app/(dashboard)/dashboard/settings/page.tsx" \
-          "$DEST/app/(dashboard)/dashboard/settings/"
-    log "Synced settings page with patches tab"
-  fi
+# Sync all settings components
+if [ -d "$SRC/app/(dashboard)/dashboard/settings/components" ]; then
+  mkdir -p "$DEST/app/(dashboard)/dashboard/settings/components"
+  cp -f "$SRC/app/(dashboard)/dashboard/settings/components/"*.tsx \
+        "$DEST/app/(dashboard)/dashboard/settings/components/" 2>/dev/null || true
+  log "Synced settings components"
+fi
+
+# Sync Sidebar with badge (for PATCHED badge)
+if [ -f "$SRC/Sidebar-with-badge.tsx" ]; then
+  cp -f "$SRC/Sidebar-with-badge.tsx" "$DEST/shared/components/Sidebar.tsx"
+  log "Synced Sidebar with PATCHED badge"
+fi
+
+# Sync PatchBadge component
+if [ -f "$SRC/ui-patches/components/PatchBadge.tsx" ]; then
+  mkdir -p "$DEST/shared/components"
+  cp -f "$SRC/ui-patches/components/PatchBadge.tsx" "$DEST/shared/components/"
+  log "Synced PatchBadge component"
 fi
 
 # Sync OmniRouteUpdater and CLIProxyAPIManager (from src root)

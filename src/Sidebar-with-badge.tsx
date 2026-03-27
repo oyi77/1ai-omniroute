@@ -24,7 +24,7 @@ const navItemDefs = [
   { href: "/dashboard/limits", i18nKey: "limits", icon: "tune" },
 ];
 
-const patchNavItem = { href: "/api/openclaw", i18nKey: "patches", icon: "construction", external: true };
+const patchNavItem = { href: "/dashboard/settings?tab=patches", i18nKey: "patches", icon: "extension" };
 
 const cliItemDefs = [
   { href: "/dashboard/cli-tools", i18nKey: "cliToolsShort", icon: "terminal" },
